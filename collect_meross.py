@@ -60,11 +60,18 @@ def get_worksheet():
 async def collect_readings():
     api_base_url = os.environ.get("MEROSS_API_BASE_URL", "https://iotx-eu.meross.com")
 
-    http_client = await MerossHttpClient.async_from_user_password(
+    # Hinweis: async_from_user_password() reicht "agree_to_terms" nicht durch und
+    # sendet es standardmaessig als 0 ("Nutzungsbedingungen nicht akzeptiert").
+    # Das fuehrt bei aktuellen Meross-Konten zu ErrorCodes.INVALID_PARAMETER (20101).
+    # Deshalb rufen wir async_login() direkt auf und setzen agree_to_terms=1 explizit.
+    creds = await MerossHttpClient.async_login(
         api_base_url=api_base_url,
         email=os.environ["MEROSS_EMAIL"],
         password=os.environ["MEROSS_PASSWORD"],
+        country_code="de",
+        agree_to_terms=1,
     )
+    http_client = MerossHttpClient(cloud_credentials=creds)
     manager = MerossManager(http_client=http_client)
     await manager.async_init()
     await manager.async_device_discovery()
