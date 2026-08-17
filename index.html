@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Balkonkraftwerke – Live-Dashboard</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f7f7f6; }
+  body:has([data-theme="dark"]) { background: #0c0c0c; }
+  @media (prefers-color-scheme: dark) {
+    body:not(:has([data-theme="light"])) { background: #0c0c0c; }
+  }
+
+  .viz-root {
+    --surface-1:  #ffffff;
+    --page:       #f7f7f6;
+    --ink-1:      #111111;
+    --ink-2:      #8a8a8a;
+    --ink-3:      #b8b8b4;
+    --gridline:   #e7e6e2;
+    --baseline:   #c9c8c3;
+    --border:     rgba(17,17,17,0.12);
+    --wash-1:     rgba(17,17,17,0.06);
+    --wash-2:     rgba(138,138,138,0.14);
+    color-scheme: light;
+    max-width: 980px; margin: 0 auto; padding: 28px 20px 70px; color: var(--ink-1);
+  }
+  :root[data-theme="dark"] .viz-root {
+    --surface-1: #171717; --page: #0c0c0c;
+    --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-3: #6c6c68;
+    --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
+    --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      --surface-1: #171717; --page: #0c0c0c;
+      --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-3: #6c6c68;
+      --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
+      --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
+      color-scheme: dark;
+    }
+  }
+
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .subtitle { font-size: 13px; color: var(--ink-2); margin: 0; }
+  .theme-toggle { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  .theme-toggle:hover { color: var(--ink-1); }
+
+  .status-banner { margin: 14px 0 24px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); font-size: 12.5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-1); flex: none; animation: pulse 1.8s infinite; }
+  .live-dot.stale { background: var(--ink-3); animation: none; }
+  @keyframes pulse { 0%,100% { opacity: .9; } 50% { opacity: .25; } }
+  .refresh-btn { margin-left: auto; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .refresh-btn:hover { color: var(--ink-1); }
+
+  h2.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 30px 0 10px; font-weight: 600; }
+  h2.section-title:first-of-type { margin-top: 0; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 4px; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-height: 96px; display: flex; flex-direction: column; justify-content: space-between; }
+  .stat-label { font-size: 12px; color: var(--ink-2); }
+  .stat-value { font-size: 25px; font-weight: 600; margin: 2px 0; }
+  .stat-split { display: flex; gap: 12px; font-size: 11.5px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
+  .stat-split span.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .stat-foot { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+
+  .price-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
+  .price-row input { width: 64px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
+
+  .chart-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px 8px; margin-bottom: 18px; position: relative; }
+  .chart-card h3 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+  .chart-card .chart-sub { font-size: 12px; color: var(--ink-2); margin: 0 0 10px; }
+
+  .legend { display: flex; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+  .legend-swatch { width: 16px; height: 2px; border-radius: 2px; background: var(--ink-1); }
+  .legend-swatch.dashed { background: none; border-top: 2px dashed var(--ink-2); height: 0; }
+
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .gridline { stroke: var(--gridline); stroke-width: 1; }
+  .baseline-l { stroke: var(--baseline); stroke-width: 1; }
+  .axis-label { fill: var(--ink-3); font-size: 11px; }
+  .line-a { fill: none; stroke: var(--ink-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .line-b { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-dasharray: 5 4; stroke-linecap: round; stroke-linejoin: round; }
+  .direct-label { font-size: 12px; font-weight: 600; fill: var(--ink-1); }
+  .direct-label.muted { fill: var(--ink-2); }
+
+  .crosshair { stroke: var(--baseline); stroke-width: 1; opacity: 0; pointer-events: none; }
+  .hover-dot { r: 4; stroke-width: 2; opacity: 0; pointer-events: none; stroke: var(--surface-1); }
+
+  .tooltip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.14); opacity: 0; transition: opacity .1s; min-width: 160px; }
+  .tooltip-time { color: var(--ink-3); margin-bottom: 4px; }
+  .tooltip-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }
+  .tooltip-key { width: 10px; height: 2px; border-radius: 2px; margin-right: 6px; background: var(--ink-1); }
+  .tooltip-key.b { background: var(--ink-2); }
+  .tooltip-name { color: var(--ink-2); display: flex; align-items: center; }
+  .tooltip-val { color: var(--ink-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .table-toggle { font-size: 12px; color: var(--ink-2); background: none; border: none; text-decoration: underline; cursor: pointer; padding: 0; margin: 6px 0 10px; }
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 12px; display: none; }
+  table.data-table.show { display: table; }
+  table.data-table th, table.data-table td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--gridline); font-variant-numeric: tabular-nums; }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; }
+  table.data-table th { color: var(--ink-2); font-weight: 600; }
+
+  .building-card { text-align: center; padding: 34px 20px; color: var(--ink-2); font-size: 13px; }
+  .building-card b { color: var(--ink-1); }
+
+  .house-ink { stroke: var(--ink-1); fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+  .house-ink-muted { stroke: var(--ink-3); fill: none; stroke-width: 1.2; }
+  .panel-fill { fill: var(--wash-1); }
+  .flow-label { font-size: 12px; fill: var(--ink-1); font-weight: 600; }
+  .flow-dash { stroke-dasharray: 6 7; animation: dashmove 1s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset: -13; } }
+
+  footer { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
+  .error-box { border: 1px solid var(--border); background: var(--surface-1); border-radius: 12px; padding: 16px; color: var(--ink-1); font-size: 13px; margin-bottom: 18px; }
+
+  @media (max-width: 700px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="viz-root" id="vizRoot">
+
+  <div class="topbar">
+    <div>
+      <h1>Balkonkraftwerke – Ertragsübersicht</h1>
+      <p class="subtitle">Live-Daten aus eurer Google-Tabelle</p>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button">Modus</button>
+  </div>
+
+  <div class="status-banner" id="statusBanner">
+    <span class="live-dot" id="liveDot"></span>
+    <span id="statusText">Lade Daten…</span>
+    <button class="refresh-btn" id="refreshBtn" type="button">Jetzt aktualisieren</button>
+  </div>
+
+  <div id="errorArea"></div>
+  <div id="dashboardArea" style="display:none;">
+
+    <h2 class="section-title">Jetzt &amp; heute</h2>
+    <div class="kpi-row" id="kpiRow"></div>
+
+    <div class="price-row">
+      Angenommener Strompreis:
+      <input type="number" id="priceInput" value="0.37" step="0.01" min="0.10" max="1.00">
+      €/kWh
+    </div>
+
+    <h2 class="section-title">Wie der Strom fließt</h2>
+    <div class="chart-card">
+      <h3>Live-Leistung je Anlage</h3>
+      <p class="chart-sub" id="flowSub">Letzte Messung</p>
+      <svg id="houseFlow" viewBox="0 0 900 340"></svg>
+    </div>
+
+    <h2 class="section-title">Verlauf heute</h2>
+    <div class="chart-card">
+      <h3>Leistung über den Tag</h3>
+      <p class="chart-sub" id="lineSub"></p>
+      <div class="legend" id="legendArea"></div>
+      <div style="position:relative;">
+        <svg id="lineChart" viewBox="0 0 900 300"></svg>
+        <div class="tooltip" id="lineTooltip"></div>
+      </div>
+      <button class="table-toggle" id="tableToggle" type="button">Rohdaten anzeigen</button>
+      <table class="data-table" id="dataTable">
+        <thead><tr><th>Zeitstempel</th><th>Gerät</th><th>Leistung (W)</th><th>Spannung (V)</th><th>Strom (A)</th></tr></thead>
+        <tbody id="dataTableBody"></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title">Wochen-, Monats- &amp; Jahresübersicht</h2>
+    <div class="chart-card" id="longTermCard"></div>
+
+  </div>
+
+  <footer>
+    Daten werden alle 15 Minuten automatisch von Meross abgefragt und hier alle paar Minuten neu geladen.
+    Diese Seite liest ausschließlich, sie verändert eure Tabelle nicht.
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var ns = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs) { var e = document.createElementNS(ns, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+  var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT5Bdep76NZKMNqet9gaRuY_Hv2f0Mc8vt1jUDOYm-53_6asyMWyt4Fi6JhqrGWE4-YXYTjvm8c1pi8/pub?output=csv";
+  var REFRESH_MS = 5 * 60 * 1000;
+
+  var root = document.documentElement;
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var c = root.getAttribute('data-theme');
+    if (c === 'dark') root.setAttribute('data-theme', 'light');
+    else if (c === 'light') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', 'dark');
+  });
+
+  var deviceOrder = [];
+  function colorFor(device, part) {
+    var idx = deviceOrder.indexOf(device);
+    if (idx < 0) { deviceOrder.push(device); idx = deviceOrder.length - 1; }
+    if (part === 'ink') return idx === 0 ? 'var(--ink-1)' : (idx === 1 ? 'var(--ink-2)' : 'var(--ink-3)');
+    if (part === 'wash') return idx === 0 ? 'var(--wash-1)' : 'var(--wash-2)';
+    if (part === 'class') return idx === 0 ? 'line-a' : 'line-b';
+  }
+
+  function parseCsv(text) {
+    var lines = text.split(/\r?\n/).filter(function (l) { return l.trim().length > 0; });
+    if (lines.length === 0) return [];
+    function splitLine(line) {
+      var out = [], cur = '', inQuotes = false;
+      for (var i = 0; i < line.length; i++) {
+        var c = line[i];
+        if (inQuotes) {
+          if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; } }
+          else cur += c;
+        } else {
+          if (c === '"') inQuotes = true;
+          else if (c === ',') { out.push(cur); cur = ''; }
+          else cur += c;
+        }
+      }
+      out.push(cur);
+      return out;
+    }
+    var header = splitLine(lines[0]).map(function (h) { return h.trim().toLowerCase(); });
+    var idxTime = header.indexOf('zeitstempel');
+    var idxDevice = header.indexOf('geraet');
+    var idxPower = header.indexOf('leistung_w');
+    var idxVolt = header.indexOf('spannung_v');
+    var idxCurrent = header.indexOf('strom_a');
+
+    function toNumber(s) {
+      if (s === undefined) return NaN;
+      s = s.trim();
+      if (s.indexOf(',') >= 0 && s.indexOf('.') < 0) s = s.replace(',', '.');
+      return parseFloat(s);
+    }
+    function parseTimestamp(s) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s.trim());
+      if (!m) return null;
+      return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    }
+
+    var rows = [];
+    for (var i = 1; i < lines.length; i++) {
+      var cols = splitLine(lines[i]);
+      var ts = parseTimestamp(cols[idxTime] || '');
+      if (!ts) continue;
+      rows.push({
+        time: ts,
+        device: (cols[idxDevice] || '').trim(),
+        power: toNumber(cols[idxPower]),
+        voltage: toNumber(cols[idxVolt]),
+        current: toNumber(cols[idxCurrent])
+      });
+    }
+    rows.sort(function (a, b) { return a.time - b.time; });
+    return rows;
+  }
+
+  function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+  function dayKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+
+  // Trapez-Integration ueber Leistungswerte (W) -> kWh, je Geraet, ueber die uebergebenen Punkte
+  function integrateKwh(points) {
+    if (points.length < 2) return 0;
+    var kwh = 0;
+    for (var i = 1; i < points.length; i++) {
+      var dtHours = (points[i].time - points[i - 1].time) / 3600000;
+      if (dtHours <= 0 || dtHours > 6) continue; // grosse Luecken (z.B. mehrtaegige Pausen) nicht mitrechnen
+      kwh += ((points[i].power + points[i - 1].power) / 2) * dtHours / 1000;
+    }
+    return kwh;
+  }
+
+  function fmtKwh(v) { return v.toFixed(v < 1 ? 3 : 2).replace('.', ',') + ' kWh'; }
+  function fmtEur(v) { return v.toFixed(2).replace('.', ',') + ' €'; }
+  function fmtTime(d) { return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+
+  var lastRows = [];
+
+  function render(rows) {
+    lastRows = rows;
+    if (rows.length === 0) {
+      showError('Die Tabelle wurde geladen, enthält aber noch keine Zeilen. Sobald der erste automatische Lauf durch ist, erscheinen hier Werte.');
+      return;
+    }
+    document.getElementById('errorArea').innerHTML = '';
+    document.getElementById('dashboardArea').style.display = '';
+
+    var now = new Date();
+    var latestTime = rows[rows.length - 1].time;
+    var minutesSinceUpdate = Math.max(0, Math.round((now - latestTime) / 60000));
+    document.getElementById('statusText').textContent =
+      'Letzte Messung: ' + fmtTime(latestTime) + ' Uhr (vor ' + minutesSinceUpdate + ' Min.)';
+    document.getElementById('liveDot').classList.toggle('stale', minutesSinceUpdate > 45);
+
+    var devices = [];
+    rows.forEach(function (r) { if (devices.indexOf(r.device) < 0) devices.push(r.device); });
+    deviceOrder = [];
+    devices.forEach(function (d) { colorFor(d, 'ink'); });
+
+    // pro Geraet: neuester Wert
+    var latestByDevice = {};
+    devices.forEach(function (d) {
+      var forDevice = rows.filter(function (r) { return r.device === d; });
+      latestByDevice[d] = forDevice[forDevice.length - 1];
+    });
+
+    // heutige Punkte pro Geraet
+    var todayByDevice = {};
+    devices.forEach(function (d) {
+      todayByDevice[d] = rows.filter(function (r) { return r.device === d && isSameDay(r.time, now); });
+    });
+
+    var earliestTime = rows[0].time;
+    var historySpanDays = (latestTime - earliestTime) / 86400000;
+
+    renderKpis(devices, latestByDevice, todayByDevice, earliestTime, historySpanDays);
+    renderPriceReactive(devices, todayByDevice);
+    renderHouseFlow(devices, latestByDevice);
+    renderLineChart(devices, todayByDevice, now);
+    renderDataTable(rows);
+    renderLongTerm(rows, devices, historySpanDays);
+  }
+
+  function renderKpis(devices, latestByDevice, todayByDevice, earliestTime, historySpanDays) {
+    var kpiRow = document.getElementById('kpiRow');
+    kpiRow.innerHTML = '';
+
+    var totalNow = 0;
+    devices.forEach(function (d) { totalNow += (latestByDevice[d].power || 0); });
+
+    var todayKwhByDevice = {};
+    var todayTotal = 0;
+    devices.forEach(function (d) {
+      var k = integrateKwh(todayByDevice[d]);
+      todayKwhByDevice[d] = k;
+      todayTotal += k;
+    });
+
+    function tile(label, valueHtml, splitHtml, footHtml) {
+      var t = document.createElement('div'); t.className = 'stat-tile';
+      t.innerHTML = '<div class="stat-label">' + label + '</div><div class="stat-value">' + valueHtml + '</div>' +
+        (splitHtml ? '<div class="stat-split">' + splitHtml + '</div>' : '') +
+        (footHtml ? '<div class="stat-foot">' + footHtml + '</div>' : '');
+      return t;
+    }
+
+    var powerSplit = devices.map(function (d, i) {
+      return '<span><span class="dot" style="background:' + (i === 0 ? 'var(--ink-1)' : 'var(--ink-2)') + '"></span>' + escapeHtml(d) + ': ' + Math.round(latestByDevice[d].power) + ' W</span>';
+    }).join('');
+    kpiRow.appendChild(tile('Leistung jetzt', Math.round(totalNow) + ' W', powerSplit));
+
+    var kwhSplit = devices.map(function (d, i) {
+      return '<span><span class="dot" style="background:' + (i === 0 ? 'var(--ink-1)' : 'var(--ink-2)') + '"></span>' + escapeHtml(d) + ': ' + fmtKwh(todayKwhByDevice[d]) + '</span>';
+    }).join('');
+    var todayFoot = historySpanDays < 1 ? 'Schätzung aus den heutigen Messwerten' : '';
+    kpiRow.appendChild(tile('Ertrag heute (geschätzt)', fmtKwh(todayTotal), kwhSplit, todayFoot));
+
+    var priceTile = tile('Ersparnis heute', '0,00 €', '', '');
+    priceTile.id = 'saveTile';
+    kpiRow.appendChild(priceTile);
+
+    window.__todayTotalKwh = todayTotal;
+  }
+
+  function renderPriceReactive() {
+    function update() {
+      var price = parseFloat(document.getElementById('priceInput').value) || 0;
+      var save = (window.__todayTotalKwh || 0) * price;
+      var tile = document.getElementById('saveTile');
+      if (tile) tile.querySelector('.stat-value').textContent = fmtEur(save);
+    }
+    document.getElementById('priceInput').removeEventListener('input', update);
+    document.getElementById('priceInput').addEventListener('input', update);
+    update();
+  }
+
+  function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  function renderHouseFlow(devices, latestByDevice) {
+    var svg = document.getElementById('houseFlow');
+    svg.innerHTML = '';
+    var d0 = devices[0], d1 = devices[1];
+    var p0 = d0 ? Math.round(latestByDevice[d0].power) : 0;
+    var p1 = d1 ? Math.round(latestByDevice[d1].power) : 0;
+    document.getElementById('flowSub').textContent =
+      (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W';
+
+    var gx = 60, gy = 190, gw = 190, gh = 90;
+    svg.appendChild(el('rect', { x: gx, y: gy, width: gw, height: gh, class: 'house-ink' }));
+    svg.appendChild(el('line', { x1: gx - 6, y1: gy, x2: gx + gw + 6, y2: gy - 14, class: 'house-ink' }));
+    function panel(x, y, w, h, rot) {
+      var g = el('g', { transform: 'translate(' + x + ',' + y + ') rotate(' + rot + ')' });
+      g.appendChild(el('rect', { x: 0, y: 0, width: w, height: h, class: 'house-ink panel-fill' }));
+      for (var k = 1; k < 3; k++) g.appendChild(el('line', { x1: (w / 3) * k, y1: 0, x2: (w / 3) * k, y2: h, class: 'house-ink-muted' }));
+      g.appendChild(el('line', { x1: 0, y1: h / 2, x2: w, y2: h / 2, class: 'house-ink-muted' }));
+      return g;
+    }
+    svg.appendChild(panel(gx + 14, gy - 30, 68, 20, -4));
+    svg.appendChild(panel(gx + 96, gy - 32, 68, 20, -4));
+
+    var hx = 470, hy = 150, hw = 300, hh = 140, roofH = 55;
+    svg.appendChild(el('polyline', { points: [hx, hy].join(',') + ' ' + [hx + hw / 2, hy - roofH].join(',') + ' ' + [hx + hw, hy].join(','), class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx, y: hy, width: hw, height: hh, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx + hw - 90, y: hy + hh - 70, width: 46, height: 70, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx + 26, y: hy + 24, width: 42, height: 38, class: 'house-ink' }));
+
+    svg.appendChild(el('line', { x1: 20, x2: 880, y1: gy + gh, y2: gy + gh, class: 'house-ink-muted' }));
+    svg.appendChild(el('line', { x1: hx, x2: hx + hw, y1: hy + hh, y2: hy + hh, class: 'house-ink-muted' }));
+
+    var meterX = 320, meterY = 280;
+    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: 16, class: 'house-ink' }));
+    svg.appendChild(el('path', { d: 'M' + (meterX + 3) + ' ' + (meterY - 8) + ' l -8 10 h 6 l -3 8 l 9 -11 h -6 z', fill: 'var(--ink-1)', stroke: 'none' }));
+
+    function flowPath(dstr) { return el('path', { d: dstr, stroke: 'var(--ink-2)', 'stroke-width': 2, fill: 'none', class: 'flow-dash' }); }
+    svg.appendChild(flowPath('M ' + (gx + 48) + ' ' + (gy - 10) + ' C ' + (gx + 80) + ' ' + (gy + 60) + ', ' + (meterX - 60) + ' ' + (meterY + 10) + ', ' + (meterX - 15) + ' ' + meterY));
+    svg.appendChild(flowPath('M ' + (gx + 130) + ' ' + (gy - 12) + ' C ' + (gx + 150) + ' ' + (gy + 70) + ', ' + (meterX - 40) + ' ' + (meterY + 30) + ', ' + (meterX - 15) + ' ' + (meterY + 4)));
+    svg.appendChild(flowPath('M ' + (meterX + 15) + ' ' + meterY + ' C ' + (meterX + 90) + ' ' + (meterY - 40) + ', ' + (hx - 40) + ' ' + (hy + hh - 30) + ', ' + (hx + 6) + ' ' + (hy + hh - 40)));
+
+    if (d0) { var l1 = el('text', { x: gx + 20, y: gy - 40, class: 'flow-label' }); l1.textContent = p0 + ' W'; svg.appendChild(l1); }
+    if (d1) { var l2 = el('text', { x: gx + 100, y: gy - 42, class: 'flow-label' }); l2.textContent = p1 + ' W'; svg.appendChild(l2); }
+    var garageLbl = el('text', { x: gx + gw / 2, y: gy + gh + 20, class: 'axis-label', 'text-anchor': 'middle' }); garageLbl.textContent = d0 || ''; svg.appendChild(garageLbl);
+    var houseLbl = el('text', { x: hx + hw / 2, y: hy + hh + 24, class: 'axis-label', 'text-anchor': 'middle' }); houseLbl.textContent = d1 || 'Haus'; svg.appendChild(houseLbl);
+    var totalLbl = el('text', { x: meterX, y: meterY + 34, class: 'axis-label', 'text-anchor': 'middle' }); totalLbl.textContent = (p0 + p1) + ' W gesamt'; svg.appendChild(totalLbl);
+  }
+
+  function renderLineChart(devices, todayByDevice, now) {
+    var svg = document.getElementById('lineChart');
+    svg.innerHTML = '';
+    document.getElementById('legendArea').innerHTML = devices.map(function (d, i) {
+      return '<span class="legend-item"><span class="legend-swatch' + (i === 1 ? ' dashed' : '') + '"></span>' + escapeHtml(d) + '</span>';
+    }).join('');
+    document.getElementById('lineSub').textContent = fmtTime(now) + ' Uhr, ' + now.toLocaleDateString('de-DE');
+
+    var allToday = [];
+    devices.forEach(function (d) { allToday = allToday.concat(todayByDevice[d]); });
+    if (allToday.length < 2) {
+      var msg = el('text', { x: 450, y: 150, class: 'axis-label', 'text-anchor': 'middle' });
+      msg.textContent = 'Noch nicht genug Messpunkte für heute – kommt in Kürze.';
+      svg.setAttribute('viewBox', '0 0 900 300');
+      svg.appendChild(msg);
+      return;
+    }
+
+    var W = 900, H = 300, padL = 46, padR = 22, padT = 16, padB = 30;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var minT = Math.min.apply(null, allToday.map(function (r) { return r.time.getTime(); }));
+    var maxT = Math.max.apply(null, allToday.map(function (r) { return r.time.getTime(); }));
+    var maxV = Math.max.apply(null, allToday.map(function (r) { return r.power; })) * 1.15 || 1;
+    function xPos(t) { return maxT > minT ? padL + ((t - minT) / (maxT - minT)) * plotW : padL + plotW / 2; }
+    function yPos(v) { return padT + plotH - (v / maxV) * plotH; }
+
+    for (var s = 0; s <= 4; s++) {
+      var yv = (maxV / 4) * s, y = yPos(yv);
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y, class: 'gridline' }));
+      var lbl = el('text', { x: padL - 8, y: y + 4, class: 'axis-label', 'text-anchor': 'end' });
+      lbl.textContent = Math.round(yv) + ' W'; svg.appendChild(lbl);
+    }
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH, class: 'baseline-l' }));
+
+    var tRange = maxT - minT;
+    for (var lx = minT; lx <= maxT; lx += Math.max(tRange / 6, 1)) {
+      var xl = xPos(lx);
+      var lbl2 = el('text', { x: xl, y: H - 8, class: 'axis-label', 'text-anchor': 'middle' });
+      lbl2.textContent = fmtTime(new Date(lx)); svg.appendChild(lbl2);
+    }
+
+    devices.forEach(function (d, i) {
+      var pts = todayByDevice[d];
+      if (pts.length === 0) return;
+      var pathD = pts.map(function (r, idx) { return (idx === 0 ? 'M' : 'L') + xPos(r.time.getTime()).toFixed(1) + ',' + yPos(r.power).toFixed(1); }).join(' ');
+      var areaD = pathD + ' L' + xPos(pts[pts.length - 1].time.getTime()).toFixed(1) + ',' + (padT + plotH) + ' L' + xPos(pts[0].time.getTime()).toFixed(1) + ',' + (padT + plotH) + ' Z';
+      svg.appendChild(el('path', { d: areaD, fill: colorFor(d, 'wash'), stroke: 'none' }));
+      var path = el('path', { d: pathD, class: colorFor(d, 'class') });
+      svg.appendChild(path);
+      requestAnimationFrame(function () {
+        var len = path.getTotalLength();
+        path.style.strokeDasharray = len; path.style.strokeDashoffset = len; path.style.transition = 'stroke-dashoffset 1s ease';
+        requestAnimationFrame(function () { path.style.strokeDashoffset = 0; });
+      });
+      var last = pts[pts.length - 1];
+      svg.appendChild(el('circle', { cx: xPos(last.time.getTime()), cy: yPos(last.power), r: 4, fill: colorFor(d, 'ink'), stroke: 'var(--surface-1)', 'stroke-width': 2 }));
+      var label = el('text', { x: xPos(last.time.getTime()) + 8, y: yPos(last.power) + 4, class: 'direct-label' + (i > 0 ? ' muted' : '') });
+      label.textContent = Math.round(last.power) + ' W';
+      svg.appendChild(label);
+    });
+
+    var crosshair = el('line', { x1: 0, x2: 0, y1: padT, y2: padT + plotH, class: 'crosshair' });
+    svg.appendChild(crosshair);
+    var hoverDots = devices.map(function (d) { var c = el('circle', { class: 'hover-dot', fill: colorFor(d, 'ink') }); svg.appendChild(c); return c; });
+    var hitRect = el('rect', { x: padL, y: padT, width: plotW, height: plotH, fill: 'transparent' });
+    svg.appendChild(hitRect);
+    var tooltip = document.getElementById('lineTooltip');
+    hitRect.addEventListener('pointermove', function (evt) {
+      var rect = svg.getBoundingClientRect(); var scale = W / rect.width;
+      var mx = (evt.clientX - rect.left) * scale;
+      var t = minT + ((mx - padL) / plotW) * (maxT - minT);
+      tooltip.innerHTML = '';
+      var timeEl = document.createElement('div'); timeEl.className = 'tooltip-time'; timeEl.textContent = fmtTime(new Date(t)) + ' Uhr'; tooltip.appendChild(timeEl);
+      devices.forEach(function (d, i) {
+        var pts = todayByDevice[d];
+        if (pts.length === 0) return;
+        var nearest = pts[0], bestDiff = Infinity;
+        pts.forEach(function (r) { var diff = Math.abs(r.time.getTime() - t); if (diff < bestDiff) { bestDiff = diff; nearest = r; } });
+        hoverDots[i].setAttribute('cx', xPos(nearest.time.getTime())); hoverDots[i].setAttribute('cy', yPos(nearest.power)); hoverDots[i].style.opacity = 1;
+        var r2 = document.createElement('div'); r2.className = 'tooltip-row';
+        var name = document.createElement('span'); name.className = 'tooltip-name';
+        var key = document.createElement('span'); key.className = 'tooltip-key' + (i > 0 ? ' b' : ''); name.appendChild(key);
+        var nt = document.createElement('span'); nt.textContent = d; name.appendChild(nt);
+        var val = document.createElement('span'); val.className = 'tooltip-val'; val.textContent = Math.round(nearest.power) + ' W';
+        r2.appendChild(name); r2.appendChild(val); tooltip.appendChild(r2);
+      });
+      crosshair.setAttribute('x1', xPos(t)); crosshair.setAttribute('x2', xPos(t)); crosshair.style.opacity = 1;
+      var wrapRect = svg.parentElement.getBoundingClientRect(); var px = xPos(t) / scale;
+      tooltip.style.left = Math.min(wrapRect.width - 170, Math.max(0, px - 75)) + 'px'; tooltip.style.top = '4px'; tooltip.style.opacity = 1;
+    });
+    hitRect.addEventListener('pointerleave', function () { crosshair.style.opacity = 0; hoverDots.forEach(function (c) { c.style.opacity = 0; }); tooltip.style.opacity = 0; });
+  }
+
+  function renderDataTable(rows) {
+    var tbody = document.getElementById('dataTableBody');
+    tbody.innerHTML = '';
+    var recent = rows.slice(-60).reverse();
+    recent.forEach(function (r) {
+      var tr = document.createElement('tr');
+      [r.time.toLocaleString('de-DE'), r.device, Math.round(r.power) + ' W', r.voltage.toFixed(1) + ' V', r.current.toFixed(3) + ' A'].forEach(function (v) {
+        var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    document.getElementById('tableToggle').onclick = function () {
+      var t = document.getElementById('dataTable'); t.classList.toggle('show');
+      this.textContent = t.classList.contains('show') ? 'Rohdaten ausblenden' : 'Rohdaten anzeigen';
+    };
+  }
+
+  function renderLongTerm(rows, devices, historySpanDays) {
+    var card = document.getElementById('longTermCard');
+    if (historySpanDays < 2) {
+      card.innerHTML = '<div class="building-card">Wochen-, Monats- und Jahresauswertungen bauen sich hier automatisch auf, sobald über mehrere Tage Daten gesammelt wurden.<br>Erfassung läuft seit <b>' + rows[0].time.toLocaleString('de-DE') + '</b>. Schau in ein paar Tagen wieder rein.</div>';
+      return;
+    }
+    // Ab hier: echte Tagessummen aus den vorhandenen Daten, gruppiert nach Kalendertag.
+    var byDay = {};
+    rows.forEach(function (r) {
+      var key = dayKey(r.time);
+      byDay[key] = byDay[key] || {};
+      byDay[key][r.device] = byDay[key][r.device] || [];
+      byDay[key][r.device].push(r);
+    });
+    var dayKeys = Object.keys(byDay).sort();
+    var last7 = dayKeys.slice(-7);
+    var W = 900, H = 240, padL = 46, padR = 22, padT = 16, padB = 30;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var totals = last7.map(function (k) {
+      var sum = 0;
+      devices.forEach(function (d) { sum += integrateKwh(byDay[k][d] || []); });
+      return sum;
+    });
+    var maxTotal = Math.max.apply(null, totals.concat([0.1])) * 1.2;
+    var n = last7.length, bandW = plotW / Math.max(n, 1), barW = Math.min(30, bandW * 0.5);
+    function byPos(v) { return padT + plotH - (v / maxTotal) * plotH; }
+
+    var svg = '<svg viewBox="0 0 900 240"><style></style>';
+    var parts = [];
+    for (var s = 0; s <= 4; s++) {
+      var yv = (maxTotal / 4) * s, y = byPos(yv);
+      parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '" class="gridline"/>');
+      parts.push('<text x="' + (padL - 8) + '" y="' + (y + 4) + '" class="axis-label" text-anchor="end">' + yv.toFixed(1).replace('.', ',') + ' kWh</text>');
+    }
+    parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '" class="baseline-l"/>');
+    last7.forEach(function (k, i) {
+      var cx = padL + bandW * i + bandW / 2, x0 = cx - barW / 2;
+      var v = totals[i], y = byPos(v);
+      parts.push('<rect x="' + x0 + '" y="' + y + '" width="' + barW + '" height="' + Math.max(0, byPos(0) - y) + '" rx="3" fill="var(--ink-1)"/>');
+      parts.push('<text x="' + cx + '" y="' + (y - 6) + '" class="axis-label" text-anchor="middle">' + v.toFixed(1).replace('.', ',') + '</text>');
+      var dparts = k.split('-');
+      var lbl = dparts[2] + '.' + dparts[1] + '.';
+      parts.push('<text x="' + cx + '" y="' + (H - 8) + '" class="axis-label" text-anchor="middle">' + lbl + '</text>');
+    });
+    svg += parts.join('') + '</svg>';
+
+    card.innerHTML = '<h3>Tagesertrag, letzte ' + last7.length + ' Tage mit Daten</h3>' +
+      '<p class="chart-sub">Beide Anlagen zusammen, aus echten Messwerten berechnet</p>' + svg +
+      '<p class="chart-sub" style="margin-top:10px;">Monats- und Jahresansicht folgt automatisch, sobald mehr Kalendertage vorliegen (aktuell ' + dayKeys.length + ' Tag(e) mit Daten).</p>';
+  }
+
+  function showError(msg) {
+    document.getElementById('dashboardArea').style.display = 'none';
+    document.getElementById('errorArea').innerHTML = '<div class="error-box">' + msg + '</div>';
+    document.getElementById('statusText').textContent = 'Fehler beim Laden';
+    document.getElementById('liveDot').classList.add('stale');
+  }
+
+  function load() {
+    document.getElementById('statusText').textContent = 'Lade Daten…';
+    fetch(CSV_URL + (CSV_URL.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + Date.now())
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.text();
+      })
+      .then(function (text) {
+        var rows = parseCsv(text);
+        render(rows);
+      })
+      .catch(function (err) {
+        showError('Konnte die Google-Tabelle nicht laden (' + err.message + '). Prüft, ob der Veröffentlichungs-Link noch gültig ist, oder versucht es über "Jetzt aktualisieren" erneut.');
+      });
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', load);
+  load();
+  setInterval(load, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
