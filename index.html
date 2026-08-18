@@ -157,7 +157,7 @@
     <div class="chart-card">
       <h3>Live-Leistung je Anlage</h3>
       <p class="chart-sub" id="flowSub">Letzte Messung</p>
-      <svg id="houseFlow" viewBox="0 0 1792 2390"></svg>
+      <svg id="houseFlow" viewBox="0 0 1778 1802"></svg>
     </div>
 
     <h2 class="section-title">Verlauf heute</h2>
@@ -404,15 +404,9 @@
     document.getElementById('flowSub').textContent =
       (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W';
 
-    // Euer komplettes, unbeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
+    // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
-    svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1792, height: 2390, preserveAspectRatio: 'xMidYMid meet' }));
-
-    // Alle Overlay-Elemente unten sind für den Bildausschnitt ohne den oberen Himmel-/unteren Rasenrand
-    // gerechnet; per Verschiebung um 72px nach unten passen sie wieder exakt auf das volle Originalbild.
-    var overlay = el('g', { transform: 'translate(0,72)' });
-    svg.appendChild(overlay);
-    var svg = overlay;
+    svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet' }));
 
     var RED = '#8a1f1f', BLUE = '#1f4e79', INK = '#1a1a1a';
     var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -440,32 +434,33 @@
       return el('path', { d: dstr, stroke: color, 'stroke-width': 6, fill: 'none', 'stroke-linecap': 'round', class: 'flow-dash' });
     }
 
-    // Zähler / Netzeinspeisung im Vordergrund
-    var meterX = 530, meterY = 1290, meterR = 30;
+    // Zähler / Netzeinspeisung - direkt in der Lücke zwischen Wandmodul (endet ~y1055)
+    // und dem Fenster darunter (beginnt ~y1105), mittig unter dem Modul, damit der Text gut lesbar frei steht.
+    var meterX = 620, meterY = 1080, meterR = 18;
     svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: meterR, fill: '#ffffff', stroke: INK, 'stroke-width': 5 }));
     svg.appendChild(el('path', {
-      d: 'M' + (meterX + 6) + ' ' + (meterY - 15) + ' l -15 19 h 11 l -6 15 l 17 -21 h -11 z',
+      d: 'M' + (meterX + 4) + ' ' + (meterY - 9) + ' l -9 12 h 6 l -4 9 l 10 -13 h -6 z',
       fill: INK, stroke: 'none'
     }));
-    var meterLbl = el('text', { x: meterX + meterR + 16, y: meterY + 10, 'text-anchor': 'start', 'font-family': FONT, 'font-size': 30, fill: INK });
+    var meterLbl = el('text', { x: meterX + meterR + 12, y: meterY + 7, 'text-anchor': 'start', 'font-family': FONT, 'font-size': 26, fill: INK });
     meterLbl.textContent = 'Netzeinspeisung';
     svg.appendChild(meterLbl);
 
     // Garage (2 Module, 1 Wechselrichter/Steckdose) -> Zähler, rot, animiert
-    svg.appendChild(flowPath('M 220 1375 C 280 1440, 380 1350, ' + (meterX - 34) + ' ' + (meterY - 12), RED));
-    svg.appendChild(flowPath('M 365 1385 C 420 1430, 470 1320, ' + (meterX - 10) + ' ' + (meterY - 30), RED));
+    svg.appendChild(flowPath('M 270 1225 C 320 1180, 480 1140, 605 1085', RED));
+    svg.appendChild(flowPath('M 590 1233 C 570 1190, 595 1150, 612 1082', RED));
     // Modul an der Hauswand (Richtung Garten) -> Zähler, blau, animiert
-    svg.appendChild(flowPath('M 890 1180 C 760 1280, 620 1300, ' + (meterX + 30) + ' ' + (meterY - 15), BLUE));
+    svg.appendChild(flowPath('M 740 1055 C 700 1050, 660 1055, 635 1065', BLUE));
 
     // Sprechblasen mit live Werten
-    speechBubble(40, 1160, 380, 150, '210,1310 270,1310 245,1372', RED, p0 + ' W', d0 || 'Solar Garage');
-    speechBubble(960, 1055, 400, 150, '960,1140 960,1200 890,1165', BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
+    speechBubble(15, 970, 380, 150, '220,1120 320,1120 300,1210', RED, p0 + ' W', d0 || 'Solar Garage');
+    speechBubble(920, 910, 380, 150, '920,1000 920,1040 875,955', BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
 
-    // Gesamt-Wert oben im Bild
-    var totalBig = el('text', { x: 725, y: 145, 'text-anchor': 'middle', 'font-family': FONT, 'font-weight': '700', 'font-size': 62, fill: INK });
+    // Gesamt-Wert oben im Bild, mittig über dem Dachgiebel
+    var totalBig = el('text', { x: 1020, y: 105, 'text-anchor': 'middle', 'font-family': FONT, 'font-weight': '700', 'font-size': 62, fill: INK });
     totalBig.textContent = (p0 + p1) + ' W';
     svg.appendChild(totalBig);
-    var totalSub = el('text', { x: 725, y: 185, 'text-anchor': 'middle', 'font-family': FONT, 'font-size': 32, fill: '#6a6a6a' });
+    var totalSub = el('text', { x: 1020, y: 145, 'text-anchor': 'middle', 'font-family': FONT, 'font-size': 32, fill: '#6a6a6a' });
     totalSub.textContent = 'gerade jetzt insgesamt';
     svg.appendChild(totalSub);
   }
