@@ -2,16 +2,32 @@ name: Meross-Ertrag erfassen
 
 on:
   schedule:
-    # alle 5 Minuten - das ist das kleinste Intervall, das GitHub fuer zeitgesteuerte
-    # Actions ueberhaupt erlaubt. GitHub garantiert keine exakte Punktlandung,
-    # bei viel Last auf GitHub-Seite kann es ein paar Minuten spaeter laufen.
+    # Ruecktfallnetz: GitHub's eigener Zeit-Trigger ("schedule") ist offiziell nur "best effort" -
+    # bei Last auf GitHub-Seite werden Ticks manchmal komplett uebersprungen (das hatten wir live
+    # beobachtet: statt alle 5 Minuten liefen die Werte alle 20-100+ Minuten ein). Der eigentliche
+    # 5-Minuten-Takt kommt daher unten aus der Selbst-Trigger-Kette; dieser Cron ist nur die
+    # Rueckfallebene, falls diese Kette mal abreisst (z.B. nach einem GitHub-Ausfall).
     - cron: "*/5 * * * *"
-  workflow_dispatch: {}   # erlaubt manuelles Starten über den "Actions"-Tab, z. B. für den ersten Test
+  workflow_dispatch: {}   # erlaubt manuelles Starten UND wird von diesem Workflow selbst benutzt,
+                          # um sich nach jedem Lauf zuverlaessig wieder neu zu starten (siehe unten).
+
+# Verhindert, dass durch das Rueckfallnetz (schedule) und die Selbst-Trigger-Kette gleichzeitig
+# mehrere Laeufe parallel entstehen - neue Trigger warten, statt parallel zu laufen.
+concurrency:
+  group: meross-collect
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   collect:
     runs-on: ubuntu-latest
     steps:
+      - name: Startzeit merken
+        id: start
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Repository auschecken
         uses: actions/checkout@v4
 
@@ -30,3 +46,30 @@ jobs:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: python collect_meross.py
+
+      # Ab hier "if: always()": das soll auch dann noch laufen, wenn die Meross-Abfrage oben mal
+      # fehlschlaegt (z.B. kurzer Meross-Ausfall) - sonst wuerde ein einzelner Fehlschlag die ganze
+      # Selbst-Trigger-Kette abreissen lassen, und wir waeren wieder auf das unzuverlaessige
+      # schedule-Rueckfallnetz angewiesen.
+      - name: Bis zur vollen 5-Minuten-Marke warten
+        if: always()
+        run: |
+          ELAPSED=$(( $(date +%s) - ${{ steps.start.outputs.epoch }} ))
+          REMAINING=$(( 300 - ELAPSED ))
+          if [ "$REMAINING" -gt 0 ]; then
+            echo "Warte noch ${REMAINING}s, damit der naechste Lauf ca. 5 Minuten nach diesem beginnt."
+            sleep "$REMAINING"
+          else
+            echo "Dieser Lauf hat bereits laenger als 5 Minuten gedauert, starte den naechsten sofort."
+          fi
+
+      # workflow_dispatch (manuelles/API-Ausloesen) ist bei GitHub zuverlaessig - im Gegensatz zum
+      # "schedule"-Trigger oben. SELF_DISPATCH_TOKEN ist ein eigens dafuer angelegtes, auf dieses
+      # Repository beschraenktes Zugriffstoken (siehe Einrichtungshinweise) - der automatische
+      # GITHUB_TOKEN darf sich aus Sicherheitsgruenden (Endlosschleifen-Schutz) nicht selbst erneut
+      # ausloesen, ein eigenes Token schon.
+      - name: Naechsten Lauf zuverlaessig selbst anstossen
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.SELF_DISPATCH_TOKEN }}
+        run: gh workflow run collect.yml --repo ${{ github.repository }}
