@@ -192,7 +192,7 @@
   var ns = 'http://www.w3.org/2000/svg';
   function el(tag, attrs) { var e = document.createElementNS(ns, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
 
-  var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT5Bdep76NZKMNqet9gaRuY_Hv2f0Mc8vt1jUDOYm-53_6asyMWyt4Fi6JhqrGWE4-YXYTjvm8c1pi8/pub?gid=1528432315&single=true&output=csv";
+  var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT5Bdep76NZKMNqet9gaRuY_Hv2f0Mc8vt1jUDOYm-53_6asyMWyt4Fi6JhqrGWE4-YXYTjvm8c1pi8/pub?output=csv";
   var REFRESH_MS = 5 * 60 * 1000;
 
   var root = document.documentElement;
@@ -397,9 +397,6 @@
     document.getElementById('flowSub').textContent =
       (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W';
 
-    var gx = 60, gy = 190, gw = 190, gh = 90;
-    svg.appendChild(el('rect', { x: gx, y: gy, width: gw, height: gh, class: 'house-ink' }));
-    svg.appendChild(el('line', { x1: gx - 6, y1: gy, x2: gx + gw + 6, y2: gy - 14, class: 'house-ink' }));
     function panel(x, y, w, h, rot) {
       var g = el('g', { transform: 'translate(' + x + ',' + y + ') rotate(' + rot + ')' });
       g.appendChild(el('rect', { x: 0, y: 0, width: w, height: h, class: 'house-ink panel-fill' }));
@@ -407,32 +404,56 @@
       g.appendChild(el('line', { x1: 0, y1: h / 2, x2: w, y2: h / 2, class: 'house-ink-muted' }));
       return g;
     }
-    svg.appendChild(panel(gx + 14, gy - 30, 68, 20, -4));
-    svg.appendChild(panel(gx + 96, gy - 32, 68, 20, -4));
 
-    var hx = 470, hy = 150, hw = 300, hh = 140, roofH = 55;
-    svg.appendChild(el('polyline', { points: [hx, hy].join(',') + ' ' + [hx + hw / 2, hy - roofH].join(',') + ' ' + [hx + hw, hy].join(','), class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx, y: hy, width: hw, height: hh, class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx + hw - 90, y: hy + hh - 70, width: 46, height: 70, class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx + 26, y: hy + 24, width: 42, height: 38, class: 'house-ink' }));
+    // Garage (links): 2 Module, 1 Wechselrichter, 1 Steckdose -> Anlage "d0"
+    var gx = 50, gy = 210, gw = 170, gh = 90;
+    svg.appendChild(el('rect', { x: gx, y: gy, width: gw, height: gh, class: 'house-ink' }));
+    svg.appendChild(el('line', { x1: gx - 6, y1: gy, x2: gx + gw + 6, y2: gy - 12, class: 'house-ink' }));
+    svg.appendChild(panel(gx + 8, gy - 26, 62, 18, -4));
+    svg.appendChild(panel(gx + 84, gy - 28, 62, 18, -4));
 
-    svg.appendChild(el('line', { x1: 20, x2: 880, y1: gy + gh, y2: gy + gh, class: 'house-ink-muted' }));
-    svg.appendChild(el('line', { x1: hx, x2: hx + hw, y1: hy + hh, y2: hy + hh, class: 'house-ink-muted' }));
+    // Wohnhaus (rechts), Giebeldach nach dem Foto aus dem Garten:
+    // Spitzgiebel mit Dachfenster, 2 Fenster im Obergeschoss, 1 Modul an der Wand
+    // (Richtung Garten), Fenster im Erdgeschoss, Terrassentür.
+    var hx = 430, hEave = 150, hw = 380, hGround = 300, roofH = 95;
+    var peakX = hx + hw / 2, peakY = hEave - roofH;
+    svg.appendChild(el('polyline', { points: [hx, hEave].join(',') + ' ' + [peakX, peakY].join(',') + ' ' + [hx + hw, hEave].join(','), class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx, y: hEave, width: hw, height: hGround - hEave, class: 'house-ink' }));
+    // Dachfenster (Spitzboden)
+    svg.appendChild(el('rect', { x: peakX - 15, y: 95, width: 30, height: 30, class: 'house-ink' }));
+    // 2 Fenster Obergeschoss
+    svg.appendChild(el('rect', { x: hx + 55, y: 165, width: 50, height: 45, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx + hw - 105, y: 165, width: 50, height: 45, class: 'house-ink' }));
+    // Das eine Modul an der Hauswand, Richtung Garten -> Anlage "d1"
+    var wallPanelX = hx + 40, wallPanelY = 222;
+    svg.appendChild(panel(wallPanelX, wallPanelY, 90, 24, -3));
+    // Fenster Erdgeschoss + Terrassentür
+    svg.appendChild(el('rect', { x: hx + 30, y: 252, width: 50, height: 48, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx + hw - 100, y: 210, width: 70, height: 90, class: 'house-ink' }));
 
-    var meterX = 320, meterY = 280;
+    svg.appendChild(el('line', { x1: 20, x2: 880, y1: hGround, y2: hGround, class: 'house-ink-muted' }));
+    var houseGroundLbl = el('text', { x: hx + hw / 2, y: hGround + 22, class: 'axis-label', 'text-anchor': 'middle' }); houseGroundLbl.textContent = 'Haus'; svg.appendChild(houseGroundLbl);
+
+    var meterX = 325, meterY = 284;
     svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: 16, class: 'house-ink' }));
     svg.appendChild(el('path', { d: 'M' + (meterX + 3) + ' ' + (meterY - 8) + ' l -8 10 h 6 l -3 8 l 9 -11 h -6 z', fill: 'var(--ink-1)', stroke: 'none' }));
 
-    function flowPath(dstr) { return el('path', { d: dstr, stroke: 'var(--ink-2)', 'stroke-width': 2, fill: 'none', class: 'flow-dash' }); }
-    svg.appendChild(flowPath('M ' + (gx + 48) + ' ' + (gy - 10) + ' C ' + (gx + 80) + ' ' + (gy + 60) + ', ' + (meterX - 60) + ' ' + (meterY + 10) + ', ' + (meterX - 15) + ' ' + meterY));
-    svg.appendChild(flowPath('M ' + (gx + 130) + ' ' + (gy - 12) + ' C ' + (gx + 150) + ' ' + (gy + 70) + ', ' + (meterX - 40) + ' ' + (meterY + 30) + ', ' + (meterX - 15) + ' ' + (meterY + 4)));
-    svg.appendChild(flowPath('M ' + (meterX + 15) + ' ' + meterY + ' C ' + (meterX + 90) + ' ' + (meterY - 40) + ', ' + (hx - 40) + ' ' + (hy + hh - 30) + ', ' + (hx + 6) + ' ' + (hy + hh - 40)));
+    function flowPath(dstr, color) { return el('path', { d: dstr, stroke: color || 'var(--ink-2)', 'stroke-width': 2, fill: 'none', class: 'flow-dash' }); }
+    var colorD0 = d0 ? colorFor(d0, 'ink') : 'var(--ink-1)';
+    var colorD1 = d1 ? colorFor(d1, 'ink') : 'var(--ink-2)';
+    // Garage (2 Module, 1 Kreis) -> Zähler
+    svg.appendChild(flowPath('M ' + (gx + 40) + ' ' + (gy - 16) + ' C ' + (gx + 70) + ' ' + (gy + 55) + ', ' + (meterX - 55) + ' ' + (meterY + 10) + ', ' + (meterX - 15) + ' ' + meterY, colorD0));
+    svg.appendChild(flowPath('M ' + (gx + 115) + ' ' + (gy - 18) + ' C ' + (gx + 140) + ' ' + (gy + 65) + ', ' + (meterX - 35) + ' ' + (meterY + 28) + ', ' + (meterX - 15) + ' ' + (meterY + 4), colorD0));
+    // Modul an der Hauswand -> Zähler (der bisher fehlende Pfad — jetzt korrekt als 1 Modul an der Hauswand, nicht als eigener Ständer)
+    svg.appendChild(flowPath('M ' + (wallPanelX + 45) + ' ' + (wallPanelY + 24) + ' C ' + (wallPanelX + 20) + ' ' + (meterY - 60) + ', ' + (meterX + 40) + ' ' + (meterY - 60) + ', ' + (meterX + 10) + ' ' + (meterY - 14), colorD1));
+    // Zähler -> Hausanschluss
+    svg.appendChild(flowPath('M ' + (meterX + 15) + ' ' + meterY + ' C ' + (meterX + 60) + ' ' + (meterY + 5) + ', ' + (hx - 20) + ' ' + (hGround - 15) + ', ' + (hx + 4) + ' ' + (hGround - 6)));
 
-    if (d0) { var l1 = el('text', { x: gx + 20, y: gy - 40, class: 'flow-label' }); l1.textContent = p0 + ' W'; svg.appendChild(l1); }
-    if (d1) { var l2 = el('text', { x: gx + 100, y: gy - 42, class: 'flow-label' }); l2.textContent = p1 + ' W'; svg.appendChild(l2); }
-    var garageLbl = el('text', { x: gx + gw / 2, y: gy + gh + 20, class: 'axis-label', 'text-anchor': 'middle' }); garageLbl.textContent = d0 || ''; svg.appendChild(garageLbl);
-    var houseLbl = el('text', { x: hx + hw / 2, y: hy + hh + 24, class: 'axis-label', 'text-anchor': 'middle' }); houseLbl.textContent = d1 || 'Haus'; svg.appendChild(houseLbl);
-    var totalLbl = el('text', { x: meterX, y: meterY + 34, class: 'axis-label', 'text-anchor': 'middle' }); totalLbl.textContent = (p0 + p1) + ' W gesamt'; svg.appendChild(totalLbl);
+    if (d0) { var l1 = el('text', { x: gx + 12, y: gy - 34, class: 'flow-label' }); l1.textContent = p0 + ' W'; svg.appendChild(l1); }
+    if (d1) { var l2 = el('text', { x: wallPanelX + 96, y: wallPanelY + 16, class: 'flow-label' }); l2.textContent = p1 + ' W'; svg.appendChild(l2); }
+    var garageLbl = el('text', { x: gx + gw / 2, y: gy + gh + 22, class: 'axis-label', 'text-anchor': 'middle' }); garageLbl.textContent = d0 || ''; svg.appendChild(garageLbl);
+    var wallLbl = el('text', { x: wallPanelX + 96, y: wallPanelY + 30, class: 'axis-label' }); wallLbl.textContent = d1 || ''; svg.appendChild(wallLbl);
+    var totalLbl = el('text', { x: meterX, y: meterY + 38, class: 'axis-label', 'text-anchor': 'middle' }); totalLbl.textContent = (p0 + p1) + ' W gesamt'; svg.appendChild(totalLbl);
   }
 
   function renderLineChart(devices, todayByDevice, now) {
