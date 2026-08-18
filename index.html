@@ -81,6 +81,7 @@
   .legend-swatch.dashed { background: none; border-top: 2px dashed var(--ink-2); height: 0; }
 
   svg { display: block; width: 100%; height: auto; overflow: visible; }
+  #houseFlow { background: #ffffff; border-radius: 8px; overflow: hidden; }
   .gridline { stroke: var(--gridline); stroke-width: 1; }
   .baseline-l { stroke: var(--baseline); stroke-width: 1; }
   .axis-label { fill: var(--ink-3); font-size: 11px; }
@@ -114,8 +115,8 @@
   .house-ink-muted { stroke: var(--ink-3); fill: none; stroke-width: 1.2; }
   .panel-fill { fill: var(--wash-1); }
   .flow-label { font-size: 12px; fill: var(--ink-1); font-weight: 600; }
-  .flow-dash { stroke-dasharray: 6 7; animation: dashmove 1s linear infinite; }
-  @keyframes dashmove { to { stroke-dashoffset: -13; } }
+  .flow-dash { stroke-dasharray: 18 16; animation: dashmove 1s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset: -34; } }
 
   footer { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
   .error-box { border: 1px solid var(--border); background: var(--surface-1); border-radius: 12px; padding: 16px; color: var(--ink-1); font-size: 13px; margin-bottom: 18px; }
@@ -156,7 +157,7 @@
     <div class="chart-card">
       <h3>Live-Leistung je Anlage</h3>
       <p class="chart-sub" id="flowSub">Letzte Messung</p>
-      <svg id="houseFlow" viewBox="0 0 900 420"></svg>
+      <svg id="houseFlow" viewBox="0 0 1792 2390"></svg>
     </div>
 
     <h2 class="section-title">Verlauf heute</h2>
@@ -187,12 +188,14 @@
 
 </div>
 
+<!-- Euer persönlicher Google-Tabellen-Link steht in config.js, nicht hier. So bleibt er erhalten,
+     auch wenn ihr diese Datei künftig komplett gegen eine neue Version austauscht. -->
+<script src="config.js"></script>
 <script>
 (function () {
   var ns = 'http://www.w3.org/2000/svg';
   function el(tag, attrs) { var e = document.createElementNS(ns, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
 
-  var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT5Bdep76NZKMNqet9gaRuY_Hv2f0Mc8vt1jUDOYm-53_6asyMWyt4Fi6JhqrGWE4-YXYTjvm8c1pi8/pub?gid=1528432315&single=true&output=csv";
   var REFRESH_MS = 5 * 60 * 1000;
 
   var root = document.documentElement;
@@ -401,73 +404,68 @@
     document.getElementById('flowSub').textContent =
       (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W';
 
-    function panel(x, y, w, h, rot) {
-      var g = el('g', { transform: 'translate(' + x + ',' + y + ') rotate(' + rot + ')' });
-      g.appendChild(el('rect', { x: 0, y: 0, width: w, height: h, class: 'house-ink panel-fill' }));
-      for (var k = 1; k < 3; k++) g.appendChild(el('line', { x1: (w / 3) * k, y1: 0, x2: (w / 3) * k, y2: h, class: 'house-ink-muted' }));
-      g.appendChild(el('line', { x1: 0, y1: h / 2, x2: w, y2: h / 2, class: 'house-ink-muted' }));
-      return g;
+    // Euer komplettes, unbeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
+    // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
+    svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1792, height: 2390, preserveAspectRatio: 'xMidYMid meet' }));
+
+    // Alle Overlay-Elemente unten sind für den Bildausschnitt ohne den oberen Himmel-/unteren Rasenrand
+    // gerechnet; per Verschiebung um 72px nach unten passen sie wieder exakt auf das volle Originalbild.
+    var overlay = el('g', { transform: 'translate(0,72)' });
+    svg.appendChild(overlay);
+    var svg = overlay;
+
+    var RED = '#8a1f1f', BLUE = '#1f4e79', INK = '#1a1a1a';
+    var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+
+    function speechBubble(bx, by, bw, bh, tailPoints, accent, value, label) {
+      var g = el('g', {});
+      g.appendChild(el('polygon', { points: tailPoints, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
+      g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
+      var valT = el('text', {
+        x: bx + bw / 2, y: by + bh * 0.46, 'text-anchor': 'middle', 'font-family': FONT,
+        'font-weight': '700', 'font-size': 56, fill: INK
+      });
+      valT.textContent = value;
+      g.appendChild(valT);
+      var lblT = el('text', {
+        x: bx + bw / 2, y: by + bh * 0.8, 'text-anchor': 'middle', 'font-family': FONT,
+        'font-weight': '400', 'font-size': 38, fill: INK
+      });
+      lblT.textContent = label;
+      g.appendChild(lblT);
+      svg.appendChild(g);
     }
 
-    // Wohnhaus (rechts), Giebeldach nach dem Foto aus dem Garten — hohes, schmales Giebelhaus,
-    // Dachneigung/Wandhöhe an das Foto angelehnt (Wand deutlich höher als das Dach).
-    var hx = 560, hw = 260, hGround = 340, hEave = 190, roofH = 90;
-    var peakX = hx + hw / 2, peakY = hEave - roofH;
-    svg.appendChild(el('polyline', { points: [hx, hEave].join(',') + ' ' + [peakX, peakY].join(',') + ' ' + [hx + hw, hEave].join(','), class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx, y: hEave, width: hw, height: hGround - hEave, class: 'house-ink' }));
-    // Dachfenster (Spitzboden)
-    svg.appendChild(el('rect', { x: peakX - 14, y: peakY + 28, width: 28, height: 28, class: 'house-ink' }));
-    // 2 Fenster Obergeschoss
-    svg.appendChild(el('rect', { x: hx + 35, y: hEave + 15, width: 45, height: 40, class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx + hw - 80, y: hEave + 15, width: 45, height: 40, class: 'house-ink' }));
-    // Das eine Modul an der Hauswand, Richtung Garten -> Anlage "d1"
-    var wallPanelX = hx + 30, wallPanelY = hEave + 65;
-    svg.appendChild(panel(wallPanelX, wallPanelY, 80, 22, -3));
-    // Fenster Erdgeschoss
-    svg.appendChild(el('rect', { x: hx + 25, y: hEave + 112, width: 45, height: 45, class: 'house-ink' }));
-    // Terrassentür
-    svg.appendChild(el('rect', { x: hx + hw - 85, y: hEave + 60, width: 65, height: 90, class: 'house-ink' }));
+    function flowPath(dstr, color) {
+      return el('path', { d: dstr, stroke: color, 'stroke-width': 6, fill: 'none', 'stroke-linecap': 'round', class: 'flow-dash' });
+    }
 
-    // Garage (links), direkt am Haus: 2 Module, 1 Wechselrichter, 1 Steckdose -> Anlage "d0"
-    var gw = 220, gx = hx - gw, gRoofNearHouse = hEave + 40, gRoofFar = hEave + 68;
-    var garagePoly = [gx, hGround].join(',') + ' ' + [gx, gRoofFar].join(',') + ' ' + [gx + gw, gRoofNearHouse].join(',') + ' ' + [gx + gw, hGround].join(',');
-    svg.appendChild(el('polygon', { points: garagePoly, class: 'house-ink' }));
-    svg.appendChild(el('line', { x1: gx - 8, y1: gRoofFar - 5, x2: gx + gw + 4, y2: gRoofNearHouse - 5, class: 'house-ink' }));
-    svg.appendChild(panel(gx + 22, gRoofFar - 30, 60, 18, -8));
-    svg.appendChild(panel(gx + 98, gRoofNearHouse - 32, 60, 18, -8));
-    // Tür und Fenster in der Garage
-    svg.appendChild(el('rect', { x: gx + 22, y: hGround - 62, width: 46, height: 62, class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: gx + 96, y: hGround - 50, width: 46, height: 42, class: 'house-ink' }));
+    // Zähler / Netzeinspeisung im Vordergrund
+    var meterX = 530, meterY = 1290, meterR = 30;
+    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: meterR, fill: '#ffffff', stroke: INK, 'stroke-width': 5 }));
+    svg.appendChild(el('path', {
+      d: 'M' + (meterX + 6) + ' ' + (meterY - 15) + ' l -15 19 h 11 l -6 15 l 17 -21 h -11 z',
+      fill: INK, stroke: 'none'
+    }));
+    var meterLbl = el('text', { x: meterX + meterR + 16, y: meterY + 10, 'text-anchor': 'start', 'font-family': FONT, 'font-size': 30, fill: INK });
+    meterLbl.textContent = 'Netzeinspeisung';
+    svg.appendChild(meterLbl);
 
-    svg.appendChild(el('line', { x1: 20, x2: 880, y1: hGround, y2: hGround, class: 'house-ink-muted' }));
-    var garageLbl0 = el('text', { x: gx + gw / 2, y: hGround + 22, class: 'axis-label', 'text-anchor': 'middle' });
-    var houseLbl0 = el('text', { x: hx + hw / 2, y: hGround + 22, class: 'axis-label', 'text-anchor': 'middle' }); houseLbl0.textContent = 'Haus'; svg.appendChild(houseLbl0);
+    // Garage (2 Module, 1 Wechselrichter/Steckdose) -> Zähler, rot, animiert
+    svg.appendChild(flowPath('M 220 1375 C 280 1440, 380 1350, ' + (meterX - 34) + ' ' + (meterY - 12), RED));
+    svg.appendChild(flowPath('M 365 1385 C 420 1430, 470 1320, ' + (meterX - 10) + ' ' + (meterY - 30), RED));
+    // Modul an der Hauswand (Richtung Garten) -> Zähler, blau, animiert
+    svg.appendChild(flowPath('M 890 1180 C 760 1280, 620 1300, ' + (meterX + 30) + ' ' + (meterY - 15), BLUE));
 
-    // Zähler im Vordergrund, dort wo Garage und Haus zusammentreffen
-    var meterX = hx, meterY = hGround + 38;
-    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: 14, class: 'house-ink' }));
-    svg.appendChild(el('path', { d: 'M' + (meterX + 3) + ' ' + (meterY - 7) + ' l -7 9 h 5 l -3 7 l 8 -10 h -5 z', fill: 'var(--ink-1)', stroke: 'none' }));
+    // Sprechblasen mit live Werten
+    speechBubble(40, 1160, 380, 150, '210,1310 270,1310 245,1372', RED, p0 + ' W', d0 || 'Solar Garage');
+    speechBubble(960, 1055, 400, 150, '960,1140 960,1200 890,1165', BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
 
-    function flowPath(dstr, color) { return el('path', { d: dstr, stroke: color || 'var(--ink-2)', 'stroke-width': 2, fill: 'none', class: 'flow-dash' }); }
-    var colorD0 = d0 ? colorFor(d0, 'ink') : 'var(--ink-1)';
-    var colorD1 = d1 ? colorFor(d1, 'ink') : 'var(--ink-2)';
-    // Garage (2 Module, 1 Kreis) -> Zähler
-    svg.appendChild(flowPath('M ' + (gx + 45) + ' ' + (gRoofFar - 8) + ' C ' + (gx - 25) + ' ' + (meterY - 55) + ', ' + (gx - 10) + ' ' + (meterY - 10) + ', ' + (meterX - 14) + ' ' + meterY, colorD0));
-    svg.appendChild(flowPath('M ' + (gx + 128) + ' ' + (gRoofNearHouse - 22) + ' C ' + (gx + 185) + ' ' + (meterY - 35) + ', ' + (meterX - 40) + ' ' + (meterY + 6) + ', ' + (meterX - 12) + ' ' + (meterY + 5), colorD0));
-    // Modul an der Hauswand -> Zähler
-    svg.appendChild(flowPath('M ' + (wallPanelX + 40) + ' ' + (wallPanelY + 22) + ' C ' + (wallPanelX + 10) + ' ' + (meterY - 40) + ', ' + (meterX + 40) + ' ' + (meterY - 30) + ', ' + (meterX + 12) + ' ' + (meterY - 4), colorD1));
-
-    if (d0) { var l1 = el('text', { x: gx + 24, y: gRoofNearHouse - 44, class: 'flow-label' }); l1.textContent = p0 + ' W'; svg.appendChild(l1); }
-    if (d1) { var l2 = el('text', { x: wallPanelX + 86, y: wallPanelY + 15, class: 'flow-label' }); l2.textContent = p1 + ' W'; svg.appendChild(l2); }
-    garageLbl0.textContent = d0 || ''; svg.appendChild(garageLbl0);
-    var wallLbl = el('text', { x: wallPanelX + 86, y: wallPanelY + 29, class: 'axis-label' }); wallLbl.textContent = d1 || ''; svg.appendChild(wallLbl);
-
-    // Gesamt-Ertrag prominent über Haus und Garage
-    var totalCx = (gx + hx + hw) / 2;
-    var totalBig = el('text', { x: totalCx, y: 44, 'text-anchor': 'middle', fill: 'var(--ink-1)', 'font-size': '30', 'font-weight': '700' });
+    // Gesamt-Wert oben im Bild
+    var totalBig = el('text', { x: 725, y: 145, 'text-anchor': 'middle', 'font-family': FONT, 'font-weight': '700', 'font-size': 62, fill: INK });
     totalBig.textContent = (p0 + p1) + ' W';
     svg.appendChild(totalBig);
-    var totalSub = el('text', { x: totalCx, y: 64, class: 'axis-label', 'text-anchor': 'middle' });
+    var totalSub = el('text', { x: 725, y: 185, 'text-anchor': 'middle', 'font-family': FONT, 'font-size': 32, fill: '#6a6a6a' });
     totalSub.textContent = 'gerade jetzt insgesamt';
     svg.appendChild(totalSub);
   }
