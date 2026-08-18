@@ -271,7 +271,38 @@
   }
 
   function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
-  function dayKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  // Immer zweistellig (z.B. "2026-08-05"), damit ein einfacher String-Sort auch chronologisch sortiert.
+  function dayKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function fmtDayKey(key) { var p = key.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+  var MONTH_NAMES = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+  // Anlagen, fuer die ein Meross-App-Verlaufsexport (Tages-kWh) als Datei im Repo liegt.
+  // Fuer Anlagen, die hier NICHT drinstehen, gibt es keinen Export - dort zaehlen dann nur die
+  // selbst geloggten Live-Werte (siehe kwhForDeviceDay in renderLongTerm). Um eine weitere Anlage
+  // mit Verlauf zu ergaenzen: Export als "Datum,kWh"-CSV hochladen und hier eine Zeile ergaenzen.
+  var HISTORICAL_FILES = {
+    'Solar Garten': 'historical-solar-garten.csv',
+    'Solar Garage': 'historical-solar-garage.csv'
+  };
+
+  // Verlaufsexport aus der Meross-App: eine Zeile "Datum,kWh" pro Tag, siehe historical-solar-garten.csv.
+  // Robust gegen Tabs/Kommas/Leerzeichen im Export, da Meross-Exporte unterschiedlich formatiert sein koennen.
+  function parseHistoricalCsv(text) {
+    var out = {};
+    var lines = text.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var parts = lines[i].split(/[\t,]+/).map(function (p) { return p.trim(); }).filter(function (p) { return p.length > 0; });
+      if (parts.length < 2) continue;
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(parts[0]);
+      if (!m) continue; // ueberspringt die Kopfzeile und leere Zeilen
+      var val = parseFloat(parts[1].replace(',', '.'));
+      if (isNaN(val)) continue;
+      var d = new Date(+m[1], +m[2] - 1, +m[3]);
+      out[dayKey(d)] = val;
+    }
+    return out;
+  }
 
   // Trapez-Integration ueber Leistungswerte (W) -> kWh, je Geraet, ueber die uebergebenen Punkte
   function integrateKwh(points) {
@@ -290,6 +321,7 @@
   function fmtTime(d) { return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
 
   var lastRows = [];
+  var histByDevice = {}; // Geraet -> { Datum -> kWh }, aus den Meross-App-Exporten in HISTORICAL_FILES
 
   function render(rows) {
     lastRows = rows;
@@ -332,7 +364,7 @@
     renderHouseFlow(devices, latestByDevice);
     renderLineChart(devices, todayByDevice, now);
     renderDataTable(rows);
-    renderLongTerm(rows, devices, historySpanDays);
+    renderLongTerm(rows, devices, historySpanDays, histByDevice);
     renderPriceReactive();
   }
 
@@ -577,13 +609,19 @@
     };
   }
 
-  function renderLongTerm(rows, devices, historySpanDays) {
+  function renderLongTerm(rows, devices, historySpanDays, histByDevice) {
     var card = document.getElementById('longTermCard');
-    if (historySpanDays < 2) {
+    histByDevice = histByDevice || {};
+    var devicesWithHistory = devices.filter(function (d) { return histByDevice[d] && Object.keys(histByDevice[d]).length > 0; });
+    var devicesWithoutHistory = devices.filter(function (d) { return devicesWithHistory.indexOf(d) < 0; });
+    var hasHistory = devicesWithHistory.length > 0;
+
+    if (!hasHistory && historySpanDays < 2) {
       card.innerHTML = '<div class="building-card">Wochen-, Monats- und Jahresauswertungen bauen sich hier automatisch auf, sobald über mehrere Tage Daten gesammelt wurden.<br>Erfassung läuft seit <b>' + rows[0].time.toLocaleString('de-DE') + '</b>. Schau in ein paar Tagen wieder rein.</div>';
       return;
     }
-    // Ab hier: echte Tagessummen aus den vorhandenen Daten, gruppiert nach Kalendertag.
+
+    // Live-Rohdaten nach Kalendertag und Geraet gruppieren (Basis fuer die Trapez-Integration).
     var byDay = {};
     rows.forEach(function (r) {
       var key = dayKey(r.time);
@@ -591,19 +629,46 @@
       byDay[key][r.device] = byDay[key][r.device] || [];
       byDay[key][r.device].push(r);
     });
-    var dayKeys = Object.keys(byDay).sort();
+
+    // Alle Tage, fuer die wir irgendeine echte Quelle haben: Live-Log oder Meross-App-Verlaufsexport.
+    var allKeysSet = {};
+    Object.keys(byDay).forEach(function (k) { allKeysSet[k] = true; });
+    devicesWithHistory.forEach(function (d) { Object.keys(histByDevice[d]).forEach(function (k) { allKeysSet[k] = true; }); });
+    var dayKeys = Object.keys(allKeysSet).sort();
+
+    // Tages-kWh je Geraet: wenn ein Verlaufsexport fuer diese Anlage vorliegt, hat er Vorrang vor dem
+    // Live-Log (volle Tagessumme direkt aus der Meross-App) - so zaehlt z.B. der 17.08. (an dem die
+    // Live-Erfassung erst ab 08:00 lief) nicht faelschlich als Teiltag. Fuer Anlagen ohne Verlaufsexport
+    // zaehlen ausschliesslich echte Live-Messwerte - niemals geschaetzt.
+    function kwhForDeviceDay(device, key) {
+      if (histByDevice[device] && histByDevice[device][key] !== undefined) return histByDevice[device][key];
+      return integrateKwh((byDay[key] && byDay[key][device]) || []);
+    }
+    function totalKwhForDay(key) {
+      var sum = 0;
+      devices.forEach(function (d) { sum += kwhForDeviceDay(d, key); });
+      return sum;
+    }
+    function dayHasDevice(device, key) {
+      return (histByDevice[device] && histByDevice[device][key] !== undefined) ||
+        (byDay[key] && byDay[key][device] && byDay[key][device].length > 0);
+    }
+    // Tage, an denen mindestens eine Anlage fehlt (weder Verlaufsexport noch Live-Log fuer sie an
+    // diesem Tag vorhanden) - z.B. weil fuer diese Anlage (noch) kein Verlaufsexport hochgeladen wurde.
+    function dayMissesAnyDevice(key) {
+      return devices.some(function (d) { return !dayHasDevice(d, key); });
+    }
+
     var last7 = dayKeys.slice(-7);
 
-    // Ersparnis nach Zeitraum, ausschließlich aus den bisher tatsächlich gesammelten Messwerten
-    // (kein Zugriff auf Verlaufsdaten aus der Meross-App von vor Beginn der Erfassung).
     function sumKwhForDays(keys) {
       var sum = 0;
-      keys.forEach(function (k) { devices.forEach(function (d) { sum += integrateKwh(byDay[k][d] || []); }); });
+      keys.forEach(function (k) { sum += totalKwhForDay(k); });
       return sum;
     }
     var monthKeyOf = function (k) { return k.split('-').slice(0, 2).join('-'); };
     var refNow = new Date();
-    var curMonthKey = refNow.getFullYear() + '-' + (refNow.getMonth() + 1);
+    var curMonthKey = refNow.getFullYear() + '-' + pad2(refNow.getMonth() + 1);
     var curYearKey = String(refNow.getFullYear());
     var periodKwh = {
       Woche: sumKwhForDays(last7),
@@ -617,49 +682,89 @@
         '<div class="stat-value" id="' + id + '">' + fmtEur(kwh * price) + '</div>' +
         '<div class="stat-split"><span>' + fmtKwh(kwh) + '</span></div></div>';
     }
+
+    var historyNote;
+    if (hasHistory) {
+      var earliestHistKey = devicesWithHistory.reduce(function (min, d) {
+        var k = Object.keys(histByDevice[d]).sort()[0];
+        return (!min || k < min) ? k : min;
+      }, null);
+      historyNote = 'Enthält den Tagesverlauf aus der Meross-App für ' + escapeHtml(devicesWithHistory.join(' und ')) + ' ab ' + fmtDayKey(earliestHistKey) + '.' +
+        (devicesWithoutHistory.length ? ' Für ' + escapeHtml(devicesWithoutHistory.join(', ')) + ' liegt kein Verlaufsexport vor – dort zählen nur die Werte seit Beginn der Live-Erfassung; Tage davor sind hier nur mit ' + escapeHtml(devicesWithHistory.join(' und ')) + ' enthalten (mit * markiert).' : '');
+    } else {
+      historyNote = 'Aus den bisher gesammelten Live-Messwerten (seit ' + rows[0].time.toLocaleDateString('de-DE') + '). Werte aus der Meross-App von vor Beginn der Erfassung sind hier nicht enthalten.';
+    }
     var savingsHtml = '<h3 style="margin-top:26px;">Ersparnis nach Zeitraum</h3>' +
-      '<p class="chart-sub">Aus den bisher gesammelten Messwerten (seit ' + rows[0].time.toLocaleDateString('de-DE') +
-      ') zum oben eingestellten Strompreis. Wächst automatisch mit, sobald mehr Tage/Wochen/Monate vorliegen — ' +
-      'Werte aus der Meross-App von vor Beginn der Erfassung sind hier nicht enthalten.</p>' +
+      '<p class="chart-sub">' + historyNote + ' Zum oben eingestellten Strompreis, wächst automatisch mit.</p>' +
       '<div class="kpi-row" style="margin-top:6px;">' +
       periodTile('Diese Woche', periodKwh.Woche, 'saveWoche') +
       periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat') +
       periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr') +
       '</div>';
 
-    var W = 900, H = 240, padL = 46, padR = 22, padT = 16, padB = 30;
-    var plotW = W - padL - padR, plotH = H - padT - padB;
-    var totals = last7.map(function (k) {
-      var sum = 0;
-      devices.forEach(function (d) { sum += integrateKwh(byDay[k][d] || []); });
-      return sum;
-    });
-    var maxTotal = Math.max.apply(null, totals.concat([0.1])) * 1.2;
-    var n = last7.length, bandW = plotW / Math.max(n, 1), barW = Math.min(30, bandW * 0.5);
-    function byPos(v) { return padT + plotH - (v / maxTotal) * plotH; }
+    // --- Wochenchart: Tagesertrag der letzten 7 Tage mit Daten ---
+    function barChart(keys, labelFor, partialFor, totalFor, title, sub) {
+      var W = 900, H = 240, padL = 46, padR = 22, padT = 16, padB = 30;
+      var plotW = W - padL - padR, plotH = H - padT - padB;
+      var totals = keys.map(totalFor);
+      var maxTotal = Math.max.apply(null, totals.concat([0.1])) * 1.2;
+      var n = keys.length, bandW = plotW / Math.max(n, 1), barW = Math.min(30, bandW * 0.5);
+      function byPos(v) { return padT + plotH - (v / maxTotal) * plotH; }
 
-    var svg = '<svg viewBox="0 0 900 240"><style></style>';
-    var parts = [];
-    for (var s = 0; s <= 4; s++) {
-      var yv = (maxTotal / 4) * s, y = byPos(yv);
-      parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '" class="gridline"/>');
-      parts.push('<text x="' + (padL - 8) + '" y="' + (y + 4) + '" class="axis-label" text-anchor="end">' + yv.toFixed(1).replace('.', ',') + ' kWh</text>');
+      var parts = [];
+      for (var s = 0; s <= 4; s++) {
+        var yv = (maxTotal / 4) * s, y = byPos(yv);
+        parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '" class="gridline"/>');
+        parts.push('<text x="' + (padL - 8) + '" y="' + (y + 4) + '" class="axis-label" text-anchor="end">' + yv.toFixed(1).replace('.', ',') + ' kWh</text>');
+      }
+      parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '" class="baseline-l"/>');
+      var anyPartial = false;
+      keys.forEach(function (k, i) {
+        var cx = padL + bandW * i + bandW / 2, x0 = cx - barW / 2;
+        var v = totals[i], y = byPos(v);
+        var partial = partialFor(k);
+        if (partial) anyPartial = true;
+        parts.push('<rect x="' + x0 + '" y="' + y + '" width="' + barW + '" height="' + Math.max(0, byPos(0) - y) + '" rx="3" fill="var(--ink-1)" opacity="' + (partial ? '0.55' : '1') + '"/>');
+        parts.push('<text x="' + cx + '" y="' + (y - 6) + '" class="axis-label" text-anchor="middle">' + v.toFixed(1).replace('.', ',') + (partial ? '*' : '') + '</text>');
+        parts.push('<text x="' + cx + '" y="' + (H - 8) + '" class="axis-label" text-anchor="middle">' + labelFor(k) + '</text>');
+      });
+      var svgHtml = '<svg viewBox="0 0 ' + W + ' ' + H + '">' + parts.join('') + '</svg>';
+      return '<h3 style="margin-top:26px;">' + title + '</h3><p class="chart-sub">' + sub + (anyPartial ? ' &nbsp;·&nbsp; * nicht alle Anlagen an diesem Tag/Monat erfasst' : '') + '</p>' + svgHtml;
     }
-    parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '" class="baseline-l"/>');
-    last7.forEach(function (k, i) {
-      var cx = padL + bandW * i + bandW / 2, x0 = cx - barW / 2;
-      var v = totals[i], y = byPos(v);
-      parts.push('<rect x="' + x0 + '" y="' + y + '" width="' + barW + '" height="' + Math.max(0, byPos(0) - y) + '" rx="3" fill="var(--ink-1)"/>');
-      parts.push('<text x="' + cx + '" y="' + (y - 6) + '" class="axis-label" text-anchor="middle">' + v.toFixed(1).replace('.', ',') + '</text>');
-      var dparts = k.split('-');
-      var lbl = dparts[2] + '.' + dparts[1] + '.';
-      parts.push('<text x="' + cx + '" y="' + (H - 8) + '" class="axis-label" text-anchor="middle">' + lbl + '</text>');
-    });
-    svg += parts.join('') + '</svg>';
 
-    card.innerHTML = '<h3>Tagesertrag, letzte ' + last7.length + ' Tage mit Daten</h3>' +
-      '<p class="chart-sub">Beide Anlagen zusammen, aus echten Messwerten berechnet (aktuell ' + dayKeys.length + ' Tag(e) mit Daten)</p>' + svg +
-      savingsHtml;
+    var weeklyHtml = barChart(
+      last7,
+      function (k) { return fmtDayKey(k).slice(0, 6); },
+      dayMissesAnyDevice,
+      totalKwhForDay,
+      'Tagesertrag, letzte ' + last7.length + ' Tage mit Daten',
+      'Aus echten Messwerten berechnet (aktuell ' + dayKeys.length + ' Tag(e) mit Daten insgesamt)'
+    );
+
+    // --- Monatschart: kWh je Kalendermonat im laufenden Jahr, aus denselben gemergten Tageswerten ---
+    var monthlyHtml = '';
+    if (hasHistory) {
+      var yearKeys = dayKeys.filter(function (k) { return k.split('-')[0] === curYearKey; });
+      var monthKeysThisYear = [];
+      for (var mi = 0; mi <= refNow.getMonth(); mi++) monthKeysThisYear.push(curYearKey + '-' + pad2(mi + 1));
+      // Monat wird markiert, sobald mindestens ein Tag darin ohne mindestens eine der Anlagen auskommen
+      // musste (nicht erst wenn der ganze Monat betroffen ist) - so bleibt auch ein Uebergangsmonat wie
+      // der, in dem die Live-Erfassung gestartet ist, ehrlich gekennzeichnet.
+      function monthMissesAnyDevice(mk) {
+        return yearKeys.some(function (k) { return monthKeyOf(k) === mk && dayMissesAnyDevice(k); });
+      }
+      function totalKwhForMonth(mk) { return sumKwhForDays(yearKeys.filter(function (k) { return monthKeyOf(k) === mk; })); }
+      monthlyHtml = barChart(
+        monthKeysThisYear,
+        function (mk) { return MONTH_NAMES[parseInt(mk.split('-')[1], 10) - 1]; },
+        monthMissesAnyDevice,
+        totalKwhForMonth,
+        'Monatsertrag ' + curYearKey,
+        'Summe je Kalendermonat, aus echten Tageswerten berechnet'
+      );
+    }
+
+    card.innerHTML = weeklyHtml + monthlyHtml + savingsHtml;
   }
 
   function showError(msg) {
@@ -669,15 +774,37 @@
     document.getElementById('liveDot').classList.add('stale');
   }
 
+  // Verlaufsexporte sind optional: falls eine Datei (noch) nicht im Repo liegt oder nicht geladen
+  // werden kann, soll das Dashboard trotzdem ganz normal mit den Live-Daten funktionieren - jede
+  // Anlage in HISTORICAL_FILES wird unabhaengig von den anderen geladen (ein fehlender Export
+  // fuer eine Anlage darf die anderen nicht mit ausfallen lassen).
+  function loadHistorical() {
+    var deviceNames = Object.keys(HISTORICAL_FILES);
+    return Promise.all(deviceNames.map(function (device) {
+      return fetch(HISTORICAL_FILES[device] + '?cb=' + Date.now())
+        .then(function (resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.text(); })
+        .then(function (text) { return parseHistoricalCsv(text); })
+        .catch(function () { return {}; });
+    })).then(function (maps) {
+      var out = {};
+      deviceNames.forEach(function (device, i) { out[device] = maps[i]; });
+      return out;
+    });
+  }
+
   function load() {
     document.getElementById('statusText').textContent = 'Lade Daten…';
-    fetch(CSV_URL + (CSV_URL.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + Date.now())
-      .then(function (resp) {
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return resp.text();
-      })
-      .then(function (text) {
-        var rows = parseCsv(text);
+    Promise.all([
+      fetch(CSV_URL + (CSV_URL.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + Date.now())
+        .then(function (resp) {
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          return resp.text();
+        }),
+      loadHistorical()
+    ])
+      .then(function (results) {
+        var rows = parseCsv(results[0]);
+        histByDevice = results[1];
         render(rows);
       })
       .catch(function (err) {
