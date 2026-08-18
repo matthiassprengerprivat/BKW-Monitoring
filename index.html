@@ -156,7 +156,7 @@
     <div class="chart-card">
       <h3>Live-Leistung je Anlage</h3>
       <p class="chart-sub" id="flowSub">Letzte Messung</p>
-      <svg id="houseFlow" viewBox="0 0 900 340"></svg>
+      <svg id="houseFlow" viewBox="0 0 900 420"></svg>
     </div>
 
     <h2 class="section-title">Verlauf heute</h2>
@@ -326,11 +326,11 @@
     var historySpanDays = (latestTime - earliestTime) / 86400000;
 
     renderKpis(devices, latestByDevice, todayByDevice, earliestTime, historySpanDays);
-    renderPriceReactive(devices, todayByDevice);
     renderHouseFlow(devices, latestByDevice);
     renderLineChart(devices, todayByDevice, now);
     renderDataTable(rows);
     renderLongTerm(rows, devices, historySpanDays);
+    renderPriceReactive();
   }
 
   function renderKpis(devices, latestByDevice, todayByDevice, earliestTime, historySpanDays) {
@@ -364,8 +364,7 @@
     var kwhSplit = devices.map(function (d, i) {
       return '<span><span class="dot" style="background:' + (i === 0 ? 'var(--ink-1)' : 'var(--ink-2)') + '"></span>' + escapeHtml(d) + ': ' + fmtKwh(todayKwhByDevice[d]) + '</span>';
     }).join('');
-    var todayFoot = historySpanDays < 1 ? 'Schätzung aus den heutigen Messwerten' : '';
-    kpiRow.appendChild(tile('Ertrag heute (geschätzt)', fmtKwh(todayTotal), kwhSplit, todayFoot));
+    kpiRow.appendChild(tile('Ertrag heute', fmtKwh(todayTotal), kwhSplit));
 
     var priceTile = tile('Ersparnis heute', '0,00 €', '', '');
     priceTile.id = 'saveTile';
@@ -380,6 +379,11 @@
       var save = (window.__todayTotalKwh || 0) * price;
       var tile = document.getElementById('saveTile');
       if (tile) tile.querySelector('.stat-value').textContent = fmtEur(save);
+      var periods = window.__periodKwh || {};
+      ['Woche', 'Monat', 'Jahr'].forEach(function (key) {
+        var el2 = document.getElementById('save' + key);
+        if (el2 && periods[key] !== undefined) el2.textContent = fmtEur(periods[key] * price);
+      });
     }
     document.getElementById('priceInput').removeEventListener('input', update);
     document.getElementById('priceInput').addEventListener('input', update);
@@ -405,55 +409,67 @@
       return g;
     }
 
-    // Garage (links): 2 Module, 1 Wechselrichter, 1 Steckdose -> Anlage "d0"
-    var gx = 50, gy = 210, gw = 170, gh = 90;
-    svg.appendChild(el('rect', { x: gx, y: gy, width: gw, height: gh, class: 'house-ink' }));
-    svg.appendChild(el('line', { x1: gx - 6, y1: gy, x2: gx + gw + 6, y2: gy - 12, class: 'house-ink' }));
-    svg.appendChild(panel(gx + 8, gy - 26, 62, 18, -4));
-    svg.appendChild(panel(gx + 84, gy - 28, 62, 18, -4));
-
-    // Wohnhaus (rechts), Giebeldach nach dem Foto aus dem Garten:
-    // Spitzgiebel mit Dachfenster, 2 Fenster im Obergeschoss, 1 Modul an der Wand
-    // (Richtung Garten), Fenster im Erdgeschoss, Terrassentür.
-    var hx = 430, hEave = 150, hw = 380, hGround = 300, roofH = 95;
+    // Wohnhaus (rechts), Giebeldach nach dem Foto aus dem Garten — hohes, schmales Giebelhaus,
+    // Dachneigung/Wandhöhe an das Foto angelehnt (Wand deutlich höher als das Dach).
+    var hx = 560, hw = 260, hGround = 340, hEave = 190, roofH = 90;
     var peakX = hx + hw / 2, peakY = hEave - roofH;
     svg.appendChild(el('polyline', { points: [hx, hEave].join(',') + ' ' + [peakX, peakY].join(',') + ' ' + [hx + hw, hEave].join(','), class: 'house-ink' }));
     svg.appendChild(el('rect', { x: hx, y: hEave, width: hw, height: hGround - hEave, class: 'house-ink' }));
     // Dachfenster (Spitzboden)
-    svg.appendChild(el('rect', { x: peakX - 15, y: 95, width: 30, height: 30, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: peakX - 14, y: peakY + 28, width: 28, height: 28, class: 'house-ink' }));
     // 2 Fenster Obergeschoss
-    svg.appendChild(el('rect', { x: hx + 55, y: 165, width: 50, height: 45, class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx + hw - 105, y: 165, width: 50, height: 45, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx + 35, y: hEave + 15, width: 45, height: 40, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: hx + hw - 80, y: hEave + 15, width: 45, height: 40, class: 'house-ink' }));
     // Das eine Modul an der Hauswand, Richtung Garten -> Anlage "d1"
-    var wallPanelX = hx + 40, wallPanelY = 222;
-    svg.appendChild(panel(wallPanelX, wallPanelY, 90, 24, -3));
-    // Fenster Erdgeschoss + Terrassentür
-    svg.appendChild(el('rect', { x: hx + 30, y: 252, width: 50, height: 48, class: 'house-ink' }));
-    svg.appendChild(el('rect', { x: hx + hw - 100, y: 210, width: 70, height: 90, class: 'house-ink' }));
+    var wallPanelX = hx + 30, wallPanelY = hEave + 65;
+    svg.appendChild(panel(wallPanelX, wallPanelY, 80, 22, -3));
+    // Fenster Erdgeschoss
+    svg.appendChild(el('rect', { x: hx + 25, y: hEave + 112, width: 45, height: 45, class: 'house-ink' }));
+    // Terrassentür
+    svg.appendChild(el('rect', { x: hx + hw - 85, y: hEave + 60, width: 65, height: 90, class: 'house-ink' }));
+
+    // Garage (links), direkt am Haus: 2 Module, 1 Wechselrichter, 1 Steckdose -> Anlage "d0"
+    var gw = 220, gx = hx - gw, gRoofNearHouse = hEave + 40, gRoofFar = hEave + 68;
+    var garagePoly = [gx, hGround].join(',') + ' ' + [gx, gRoofFar].join(',') + ' ' + [gx + gw, gRoofNearHouse].join(',') + ' ' + [gx + gw, hGround].join(',');
+    svg.appendChild(el('polygon', { points: garagePoly, class: 'house-ink' }));
+    svg.appendChild(el('line', { x1: gx - 8, y1: gRoofFar - 5, x2: gx + gw + 4, y2: gRoofNearHouse - 5, class: 'house-ink' }));
+    svg.appendChild(panel(gx + 22, gRoofFar - 30, 60, 18, -8));
+    svg.appendChild(panel(gx + 98, gRoofNearHouse - 32, 60, 18, -8));
+    // Tür und Fenster in der Garage
+    svg.appendChild(el('rect', { x: gx + 22, y: hGround - 62, width: 46, height: 62, class: 'house-ink' }));
+    svg.appendChild(el('rect', { x: gx + 96, y: hGround - 50, width: 46, height: 42, class: 'house-ink' }));
 
     svg.appendChild(el('line', { x1: 20, x2: 880, y1: hGround, y2: hGround, class: 'house-ink-muted' }));
-    var houseGroundLbl = el('text', { x: hx + hw / 2, y: hGround + 22, class: 'axis-label', 'text-anchor': 'middle' }); houseGroundLbl.textContent = 'Haus'; svg.appendChild(houseGroundLbl);
+    var garageLbl0 = el('text', { x: gx + gw / 2, y: hGround + 22, class: 'axis-label', 'text-anchor': 'middle' });
+    var houseLbl0 = el('text', { x: hx + hw / 2, y: hGround + 22, class: 'axis-label', 'text-anchor': 'middle' }); houseLbl0.textContent = 'Haus'; svg.appendChild(houseLbl0);
 
-    var meterX = 325, meterY = 284;
-    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: 16, class: 'house-ink' }));
-    svg.appendChild(el('path', { d: 'M' + (meterX + 3) + ' ' + (meterY - 8) + ' l -8 10 h 6 l -3 8 l 9 -11 h -6 z', fill: 'var(--ink-1)', stroke: 'none' }));
+    // Zähler im Vordergrund, dort wo Garage und Haus zusammentreffen
+    var meterX = hx, meterY = hGround + 38;
+    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: 14, class: 'house-ink' }));
+    svg.appendChild(el('path', { d: 'M' + (meterX + 3) + ' ' + (meterY - 7) + ' l -7 9 h 5 l -3 7 l 8 -10 h -5 z', fill: 'var(--ink-1)', stroke: 'none' }));
 
     function flowPath(dstr, color) { return el('path', { d: dstr, stroke: color || 'var(--ink-2)', 'stroke-width': 2, fill: 'none', class: 'flow-dash' }); }
     var colorD0 = d0 ? colorFor(d0, 'ink') : 'var(--ink-1)';
     var colorD1 = d1 ? colorFor(d1, 'ink') : 'var(--ink-2)';
     // Garage (2 Module, 1 Kreis) -> Zähler
-    svg.appendChild(flowPath('M ' + (gx + 40) + ' ' + (gy - 16) + ' C ' + (gx + 70) + ' ' + (gy + 55) + ', ' + (meterX - 55) + ' ' + (meterY + 10) + ', ' + (meterX - 15) + ' ' + meterY, colorD0));
-    svg.appendChild(flowPath('M ' + (gx + 115) + ' ' + (gy - 18) + ' C ' + (gx + 140) + ' ' + (gy + 65) + ', ' + (meterX - 35) + ' ' + (meterY + 28) + ', ' + (meterX - 15) + ' ' + (meterY + 4), colorD0));
-    // Modul an der Hauswand -> Zähler (der bisher fehlende Pfad — jetzt korrekt als 1 Modul an der Hauswand, nicht als eigener Ständer)
-    svg.appendChild(flowPath('M ' + (wallPanelX + 45) + ' ' + (wallPanelY + 24) + ' C ' + (wallPanelX + 20) + ' ' + (meterY - 60) + ', ' + (meterX + 40) + ' ' + (meterY - 60) + ', ' + (meterX + 10) + ' ' + (meterY - 14), colorD1));
-    // Zähler -> Hausanschluss
-    svg.appendChild(flowPath('M ' + (meterX + 15) + ' ' + meterY + ' C ' + (meterX + 60) + ' ' + (meterY + 5) + ', ' + (hx - 20) + ' ' + (hGround - 15) + ', ' + (hx + 4) + ' ' + (hGround - 6)));
+    svg.appendChild(flowPath('M ' + (gx + 45) + ' ' + (gRoofFar - 8) + ' C ' + (gx - 25) + ' ' + (meterY - 55) + ', ' + (gx - 10) + ' ' + (meterY - 10) + ', ' + (meterX - 14) + ' ' + meterY, colorD0));
+    svg.appendChild(flowPath('M ' + (gx + 128) + ' ' + (gRoofNearHouse - 22) + ' C ' + (gx + 185) + ' ' + (meterY - 35) + ', ' + (meterX - 40) + ' ' + (meterY + 6) + ', ' + (meterX - 12) + ' ' + (meterY + 5), colorD0));
+    // Modul an der Hauswand -> Zähler
+    svg.appendChild(flowPath('M ' + (wallPanelX + 40) + ' ' + (wallPanelY + 22) + ' C ' + (wallPanelX + 10) + ' ' + (meterY - 40) + ', ' + (meterX + 40) + ' ' + (meterY - 30) + ', ' + (meterX + 12) + ' ' + (meterY - 4), colorD1));
 
-    if (d0) { var l1 = el('text', { x: gx + 12, y: gy - 34, class: 'flow-label' }); l1.textContent = p0 + ' W'; svg.appendChild(l1); }
-    if (d1) { var l2 = el('text', { x: wallPanelX + 96, y: wallPanelY + 16, class: 'flow-label' }); l2.textContent = p1 + ' W'; svg.appendChild(l2); }
-    var garageLbl = el('text', { x: gx + gw / 2, y: gy + gh + 22, class: 'axis-label', 'text-anchor': 'middle' }); garageLbl.textContent = d0 || ''; svg.appendChild(garageLbl);
-    var wallLbl = el('text', { x: wallPanelX + 96, y: wallPanelY + 30, class: 'axis-label' }); wallLbl.textContent = d1 || ''; svg.appendChild(wallLbl);
-    var totalLbl = el('text', { x: meterX, y: meterY + 38, class: 'axis-label', 'text-anchor': 'middle' }); totalLbl.textContent = (p0 + p1) + ' W gesamt'; svg.appendChild(totalLbl);
+    if (d0) { var l1 = el('text', { x: gx + 24, y: gRoofNearHouse - 44, class: 'flow-label' }); l1.textContent = p0 + ' W'; svg.appendChild(l1); }
+    if (d1) { var l2 = el('text', { x: wallPanelX + 86, y: wallPanelY + 15, class: 'flow-label' }); l2.textContent = p1 + ' W'; svg.appendChild(l2); }
+    garageLbl0.textContent = d0 || ''; svg.appendChild(garageLbl0);
+    var wallLbl = el('text', { x: wallPanelX + 86, y: wallPanelY + 29, class: 'axis-label' }); wallLbl.textContent = d1 || ''; svg.appendChild(wallLbl);
+
+    // Gesamt-Ertrag prominent über Haus und Garage
+    var totalCx = (gx + hx + hw) / 2;
+    var totalBig = el('text', { x: totalCx, y: 44, 'text-anchor': 'middle', fill: 'var(--ink-1)', 'font-size': '30', 'font-weight': '700' });
+    totalBig.textContent = (p0 + p1) + ' W';
+    svg.appendChild(totalBig);
+    var totalSub = el('text', { x: totalCx, y: 64, class: 'axis-label', 'text-anchor': 'middle' });
+    totalSub.textContent = 'gerade jetzt insgesamt';
+    svg.appendChild(totalSub);
   }
 
   function renderLineChart(devices, todayByDevice, now) {
@@ -582,6 +598,40 @@
     });
     var dayKeys = Object.keys(byDay).sort();
     var last7 = dayKeys.slice(-7);
+
+    // Ersparnis nach Zeitraum, ausschließlich aus den bisher tatsächlich gesammelten Messwerten
+    // (kein Zugriff auf Verlaufsdaten aus der Meross-App von vor Beginn der Erfassung).
+    function sumKwhForDays(keys) {
+      var sum = 0;
+      keys.forEach(function (k) { devices.forEach(function (d) { sum += integrateKwh(byDay[k][d] || []); }); });
+      return sum;
+    }
+    var monthKeyOf = function (k) { return k.split('-').slice(0, 2).join('-'); };
+    var refNow = new Date();
+    var curMonthKey = refNow.getFullYear() + '-' + (refNow.getMonth() + 1);
+    var curYearKey = String(refNow.getFullYear());
+    var periodKwh = {
+      Woche: sumKwhForDays(last7),
+      Monat: sumKwhForDays(dayKeys.filter(function (k) { return monthKeyOf(k) === curMonthKey; })),
+      Jahr: sumKwhForDays(dayKeys.filter(function (k) { return k.split('-')[0] === curYearKey; }))
+    };
+    window.__periodKwh = periodKwh;
+    function periodTile(label, kwh, id) {
+      var price = parseFloat(document.getElementById('priceInput').value) || 0;
+      return '<div class="stat-tile"><div class="stat-label">' + label + '</div>' +
+        '<div class="stat-value" id="' + id + '">' + fmtEur(kwh * price) + '</div>' +
+        '<div class="stat-split"><span>' + fmtKwh(kwh) + '</span></div></div>';
+    }
+    var savingsHtml = '<h3 style="margin-top:26px;">Ersparnis nach Zeitraum</h3>' +
+      '<p class="chart-sub">Aus den bisher gesammelten Messwerten (seit ' + rows[0].time.toLocaleDateString('de-DE') +
+      ') zum oben eingestellten Strompreis. Wächst automatisch mit, sobald mehr Tage/Wochen/Monate vorliegen — ' +
+      'Werte aus der Meross-App von vor Beginn der Erfassung sind hier nicht enthalten.</p>' +
+      '<div class="kpi-row" style="margin-top:6px;">' +
+      periodTile('Diese Woche', periodKwh.Woche, 'saveWoche') +
+      periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat') +
+      periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr') +
+      '</div>';
+
     var W = 900, H = 240, padL = 46, padR = 22, padT = 16, padB = 30;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var totals = last7.map(function (k) {
@@ -613,8 +663,8 @@
     svg += parts.join('') + '</svg>';
 
     card.innerHTML = '<h3>Tagesertrag, letzte ' + last7.length + ' Tage mit Daten</h3>' +
-      '<p class="chart-sub">Beide Anlagen zusammen, aus echten Messwerten berechnet</p>' + svg +
-      '<p class="chart-sub" style="margin-top:10px;">Monats- und Jahresansicht folgt automatisch, sobald mehr Kalendertage vorliegen (aktuell ' + dayKeys.length + ' Tag(e) mit Daten).</p>';
+      '<p class="chart-sub">Beide Anlagen zusammen, aus echten Messwerten berechnet (aktuell ' + dayKeys.length + ' Tag(e) mit Daten)</p>' + svg +
+      savingsHtml;
   }
 
   function showError(msg) {
