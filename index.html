@@ -111,6 +111,11 @@
   .building-card { text-align: center; padding: 34px 20px; color: var(--ink-2); font-size: 13px; }
   .building-card b { color: var(--ink-1); }
 
+  .subtabs { display: flex; gap: 8px; margin: 0 0 4px; flex-wrap: wrap; }
+  .subtab-btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; }
+  .subtab-btn:hover { color: var(--ink-1); }
+  .subtab-btn.active { background: var(--ink-1); color: var(--surface-1); border-color: var(--ink-1); }
+
   .house-ink { stroke: var(--ink-1); fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
   .house-ink-muted { stroke: var(--ink-3); fill: none; stroke-width: 1.2; }
   .panel-fill { fill: var(--wash-1); }
@@ -660,111 +665,141 @@
     }
 
     var last7 = dayKeys.slice(-7);
-
-    function sumKwhForDays(keys) {
-      var sum = 0;
-      keys.forEach(function (k) { sum += totalKwhForDay(k); });
-      return sum;
-    }
     var monthKeyOf = function (k) { return k.split('-').slice(0, 2).join('-'); };
     var refNow = new Date();
     var curMonthKey = refNow.getFullYear() + '-' + pad2(refNow.getMonth() + 1);
     var curYearKey = String(refNow.getFullYear());
-    var periodKwh = {
-      Woche: sumKwhForDays(last7),
-      Monat: sumKwhForDays(dayKeys.filter(function (k) { return monthKeyOf(k) === curMonthKey; })),
-      Jahr: sumKwhForDays(dayKeys.filter(function (k) { return k.split('-')[0] === curYearKey; }))
-    };
-    window.__periodKwh = periodKwh;
-    function periodTile(label, kwh, id) {
-      var price = parseFloat(document.getElementById('priceInput').value) || 0;
-      return '<div class="stat-tile"><div class="stat-label">' + label + '</div>' +
-        '<div class="stat-value" id="' + id + '">' + fmtEur(kwh * price) + '</div>' +
-        '<div class="stat-split"><span>' + fmtKwh(kwh) + '</span></div></div>';
-    }
+    var yearKeys = dayKeys.filter(function (k) { return k.split('-')[0] === curYearKey; });
+    var monthKeysThisYear = [];
+    for (var mi = 0; mi <= refNow.getMonth(); mi++) monthKeysThisYear.push(curYearKey + '-' + pad2(mi + 1));
 
-    var historyNote;
-    if (hasHistory) {
-      var earliestHistKey = devicesWithHistory.reduce(function (min, d) {
-        var k = Object.keys(histByDevice[d]).sort()[0];
-        return (!min || k < min) ? k : min;
-      }, null);
-      historyNote = 'Enthält den Tagesverlauf aus der Meross-App für ' + escapeHtml(devicesWithHistory.join(' und ')) + ' ab ' + fmtDayKey(earliestHistKey) + '.' +
-        (devicesWithoutHistory.length ? ' Für ' + escapeHtml(devicesWithoutHistory.join(', ')) + ' liegt kein Verlaufsexport vor – dort zählen nur die Werte seit Beginn der Live-Erfassung; Tage davor sind hier nur mit ' + escapeHtml(devicesWithHistory.join(' und ')) + ' enthalten (mit * markiert).' : '');
-    } else {
-      historyNote = 'Aus den bisher gesammelten Live-Messwerten (seit ' + rows[0].time.toLocaleDateString('de-DE') + '). Werte aus der Meross-App von vor Beginn der Erfassung sind hier nicht enthalten.';
-    }
-    var savingsHtml = '<h3 style="margin-top:26px;">Ersparnis nach Zeitraum</h3>' +
-      '<p class="chart-sub">' + historyNote + ' Zum oben eingestellten Strompreis, wächst automatisch mit.</p>' +
-      '<div class="kpi-row" style="margin-top:6px;">' +
-      periodTile('Diese Woche', periodKwh.Woche, 'saveWoche') +
-      periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat') +
-      periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr') +
-      '</div>';
-
-    // --- Wochenchart: Tagesertrag der letzten 7 Tage mit Daten ---
-    function barChart(keys, labelFor, partialFor, totalFor, title, sub) {
-      var W = 900, H = 240, padL = 46, padR = 22, padT = 16, padB = 30;
-      var plotW = W - padL - padR, plotH = H - padT - padB;
-      var totals = keys.map(totalFor);
-      var maxTotal = Math.max.apply(null, totals.concat([0.1])) * 1.2;
-      var n = keys.length, bandW = plotW / Math.max(n, 1), barW = Math.min(30, bandW * 0.5);
-      function byPos(v) { return padT + plotH - (v / maxTotal) * plotH; }
-
-      var parts = [];
-      for (var s = 0; s <= 4; s++) {
-        var yv = (maxTotal / 4) * s, y = byPos(yv);
-        parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '" class="gridline"/>');
-        parts.push('<text x="' + (padL - 8) + '" y="' + (y + 4) + '" class="axis-label" text-anchor="end">' + yv.toFixed(1).replace('.', ',') + ' kWh</text>');
+    // Alles ab hier ist parametrisiert nach "welche Anlage(n) gerade angezeigt werden" (devicesToShow),
+    // damit dieselbe Logik sowohl fuer die "Gesamt"-Ansicht als auch fuer die einzelnen Unterreiter
+    // (Solar Garten / Solar Garage) verwendet werden kann, ohne Code zu verdoppeln.
+    function buildContent(devicesToShow) {
+      function totalKwh(key) {
+        var sum = 0;
+        devicesToShow.forEach(function (d) { sum += kwhForDeviceDay(d, key); });
+        return sum;
       }
-      parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '" class="baseline-l"/>');
-      var anyPartial = false;
-      keys.forEach(function (k, i) {
-        var cx = padL + bandW * i + bandW / 2, x0 = cx - barW / 2;
-        var v = totals[i], y = byPos(v);
-        var partial = partialFor(k);
-        if (partial) anyPartial = true;
-        parts.push('<rect x="' + x0 + '" y="' + y + '" width="' + barW + '" height="' + Math.max(0, byPos(0) - y) + '" rx="3" fill="var(--ink-1)" opacity="' + (partial ? '0.55' : '1') + '"/>');
-        parts.push('<text x="' + cx + '" y="' + (y - 6) + '" class="axis-label" text-anchor="middle">' + v.toFixed(1).replace('.', ',') + (partial ? '*' : '') + '</text>');
-        parts.push('<text x="' + cx + '" y="' + (H - 8) + '" class="axis-label" text-anchor="middle">' + labelFor(k) + '</text>');
-      });
-      var svgHtml = '<svg viewBox="0 0 ' + W + ' ' + H + '">' + parts.join('') + '</svg>';
-      return '<h3 style="margin-top:26px;">' + title + '</h3><p class="chart-sub">' + sub + (anyPartial ? ' &nbsp;·&nbsp; * nicht alle Anlagen an diesem Tag/Monat erfasst' : '') + '</p>' + svgHtml;
-    }
-
-    var weeklyHtml = barChart(
-      last7,
-      function (k) { return fmtDayKey(k).slice(0, 6); },
-      dayMissesAnyDevice,
-      totalKwhForDay,
-      'Tagesertrag, letzte ' + last7.length + ' Tage mit Daten',
-      'Aus echten Messwerten berechnet (aktuell ' + dayKeys.length + ' Tag(e) mit Daten insgesamt)'
-    );
-
-    // --- Monatschart: kWh je Kalendermonat im laufenden Jahr, aus denselben gemergten Tageswerten ---
-    var monthlyHtml = '';
-    if (hasHistory) {
-      var yearKeys = dayKeys.filter(function (k) { return k.split('-')[0] === curYearKey; });
-      var monthKeysThisYear = [];
-      for (var mi = 0; mi <= refNow.getMonth(); mi++) monthKeysThisYear.push(curYearKey + '-' + pad2(mi + 1));
-      // Monat wird markiert, sobald mindestens ein Tag darin ohne mindestens eine der Anlagen auskommen
-      // musste (nicht erst wenn der ganze Monat betroffen ist) - so bleibt auch ein Uebergangsmonat wie
-      // der, in dem die Live-Erfassung gestartet ist, ehrlich gekennzeichnet.
-      function monthMissesAnyDevice(mk) {
-        return yearKeys.some(function (k) { return monthKeyOf(k) === mk && dayMissesAnyDevice(k); });
+      function missesAnyDevice(key) {
+        return devicesToShow.some(function (d) { return !dayHasDevice(d, key); });
       }
-      function totalKwhForMonth(mk) { return sumKwhForDays(yearKeys.filter(function (k) { return monthKeyOf(k) === mk; })); }
-      monthlyHtml = barChart(
-        monthKeysThisYear,
-        function (mk) { return MONTH_NAMES[parseInt(mk.split('-')[1], 10) - 1]; },
-        monthMissesAnyDevice,
-        totalKwhForMonth,
-        'Monatsertrag ' + curYearKey,
-        'Summe je Kalendermonat, aus echten Tageswerten berechnet'
+      function sumKwhForDays(keys) {
+        var sum = 0;
+        keys.forEach(function (k) { sum += totalKwh(k); });
+        return sum;
+      }
+      var periodKwh = {
+        Woche: sumKwhForDays(last7),
+        Monat: sumKwhForDays(dayKeys.filter(function (k) { return monthKeyOf(k) === curMonthKey; })),
+        Jahr: sumKwhForDays(yearKeys)
+      };
+      window.__periodKwh = periodKwh;
+
+      function periodTile(label, kwh, id) {
+        var price = parseFloat(document.getElementById('priceInput').value) || 0;
+        return '<div class="stat-tile"><div class="stat-label">' + label + '</div>' +
+          '<div class="stat-value" id="' + id + '">' + fmtEur(kwh * price) + '</div>' +
+          '<div class="stat-split"><span>' + fmtKwh(kwh) + '</span></div></div>';
+      }
+
+      var withHist = devicesToShow.filter(function (d) { return devicesWithHistory.indexOf(d) >= 0; });
+      var withoutHist = devicesToShow.filter(function (d) { return withHist.indexOf(d) < 0; });
+      var historyNote;
+      if (withHist.length) {
+        var earliestHistKey = withHist.reduce(function (min, d) {
+          var k = Object.keys(histByDevice[d]).sort()[0];
+          return (!min || k < min) ? k : min;
+        }, null);
+        historyNote = 'Enthält den Tagesverlauf aus der Meross-App für ' + escapeHtml(withHist.join(' und ')) + ' ab ' + fmtDayKey(earliestHistKey) + '.' +
+          (withoutHist.length ? ' Für ' + escapeHtml(withoutHist.join(', ')) + ' liegt kein Verlaufsexport vor – dort zählen nur die Werte seit Beginn der Live-Erfassung; Tage davor sind hier nur mit ' + escapeHtml(withHist.join(' und ')) + ' enthalten (mit * markiert).' : '');
+      } else {
+        historyNote = 'Aus den bisher gesammelten Live-Messwerten (seit ' + rows[0].time.toLocaleDateString('de-DE') + '). Werte aus der Meross-App von vor Beginn der Erfassung sind hier nicht enthalten.';
+      }
+      var savingsHtml = '<h3 style="margin-top:26px;">Ersparnis nach Zeitraum</h3>' +
+        '<p class="chart-sub">' + historyNote + ' Zum oben eingestellten Strompreis, wächst automatisch mit.</p>' +
+        '<div class="kpi-row" style="margin-top:6px;">' +
+        periodTile('Diese Woche', periodKwh.Woche, 'saveWoche') +
+        periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat') +
+        periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr') +
+        '</div>';
+
+      function barChart(keys, labelFor, partialFor, totalFor, title, sub) {
+        var W = 900, H = 240, padL = 46, padR = 22, padT = 16, padB = 30;
+        var plotW = W - padL - padR, plotH = H - padT - padB;
+        var totals = keys.map(totalFor);
+        var maxTotal = Math.max.apply(null, totals.concat([0.1])) * 1.2;
+        var n = keys.length, bandW = plotW / Math.max(n, 1), barW = Math.min(30, bandW * 0.5);
+        function byPos(v) { return padT + plotH - (v / maxTotal) * plotH; }
+
+        var parts = [];
+        for (var s = 0; s <= 4; s++) {
+          var yv = (maxTotal / 4) * s, y = byPos(yv);
+          parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y + '" y2="' + y + '" class="gridline"/>');
+          parts.push('<text x="' + (padL - 8) + '" y="' + (y + 4) + '" class="axis-label" text-anchor="end">' + yv.toFixed(1).replace('.', ',') + ' kWh</text>');
+        }
+        parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '" class="baseline-l"/>');
+        var anyPartial = false;
+        keys.forEach(function (k, i) {
+          var cx = padL + bandW * i + bandW / 2, x0 = cx - barW / 2;
+          var v = totals[i], y = byPos(v);
+          var partial = partialFor(k);
+          if (partial) anyPartial = true;
+          parts.push('<rect x="' + x0 + '" y="' + y + '" width="' + barW + '" height="' + Math.max(0, byPos(0) - y) + '" rx="3" fill="var(--ink-1)" opacity="' + (partial ? '0.55' : '1') + '"/>');
+          parts.push('<text x="' + cx + '" y="' + (y - 6) + '" class="axis-label" text-anchor="middle">' + v.toFixed(1).replace('.', ',') + (partial ? '*' : '') + '</text>');
+          parts.push('<text x="' + cx + '" y="' + (H - 8) + '" class="axis-label" text-anchor="middle">' + labelFor(k) + '</text>');
+        });
+        var svgHtml = '<svg viewBox="0 0 ' + W + ' ' + H + '">' + parts.join('') + '</svg>';
+        return '<h3 style="margin-top:26px;">' + title + '</h3><p class="chart-sub">' + sub + (anyPartial ? ' &nbsp;·&nbsp; * nicht alle ausgewählten Anlagen an diesem Tag/Monat erfasst' : '') + '</p>' + svgHtml;
+      }
+
+      var viewLabel = devicesToShow.length === devices.length ? 'Beide Anlagen zusammen' : escapeHtml(devicesToShow[0]);
+      var weeklyHtml = barChart(
+        last7,
+        function (k) { return fmtDayKey(k).slice(0, 6); },
+        missesAnyDevice,
+        totalKwh,
+        'Tagesertrag, letzte ' + last7.length + ' Tage mit Daten',
+        viewLabel + ', aus echten Messwerten berechnet (aktuell ' + dayKeys.length + ' Tag(e) mit Daten insgesamt)'
       );
+
+      var monthlyHtml = '';
+      if (withHist.length) {
+        function monthMissesAnyDevice(mk) {
+          return yearKeys.some(function (k) { return monthKeyOf(k) === mk && missesAnyDevice(k); });
+        }
+        function totalKwhForMonth(mk) { return sumKwhForDays(yearKeys.filter(function (k) { return monthKeyOf(k) === mk; })); }
+        monthlyHtml = barChart(
+          monthKeysThisYear,
+          function (mk) { return MONTH_NAMES[parseInt(mk.split('-')[1], 10) - 1]; },
+          monthMissesAnyDevice,
+          totalKwhForMonth,
+          'Monatsertrag ' + curYearKey,
+          viewLabel + ', Summe je Kalendermonat, aus echten Tageswerten berechnet'
+        );
+      }
+
+      return weeklyHtml + monthlyHtml + savingsHtml;
     }
 
-    card.innerHTML = weeklyHtml + monthlyHtml + savingsHtml;
+    // --- Unterreiter: Gesamt + eine Ansicht je einzelner Anlage ---
+    var tabs = [{ label: 'Gesamt', devicesToShow: devices }].concat(devices.map(function (d) {
+      return { label: d, devicesToShow: [d] };
+    }));
+    var tabsHtml = '<div class="subtabs" id="longTermTabs">' + tabs.map(function (t, i) {
+      return '<button type="button" class="subtab-btn' + (i === 0 ? ' active' : '') + '" data-tab="' + i + '">' + escapeHtml(t.label) + '</button>';
+    }).join('') + '</div>';
+
+    card.innerHTML = tabsHtml + '<div id="longTermContent">' + buildContent(tabs[0].devicesToShow) + '</div>';
+    document.getElementById('longTermTabs').addEventListener('click', function (evt) {
+      var btn = evt.target.closest('.subtab-btn');
+      if (!btn) return;
+      var idx = parseInt(btn.getAttribute('data-tab'), 10);
+      this.querySelectorAll('.subtab-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('longTermContent').innerHTML = buildContent(tabs[idx].devicesToShow);
+    });
   }
 
   function showError(msg) {
