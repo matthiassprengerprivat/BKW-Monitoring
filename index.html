@@ -154,7 +154,7 @@
 
     <div class="price-row">
       Angenommener Strompreis:
-      <input type="number" id="priceInput" value="0.37" step="0.01" min="0.10" max="1.00">
+      <input type="number" id="priceInput" value="0.2773" step="0.0001" min="0.10" max="1.00">
       €/kWh
     </div>
 
@@ -413,9 +413,27 @@
     window.__todayTotalKwh = todayTotal;
   }
 
+  var PRICE_STORAGE_KEY = 'bkw-strompreis';
+  var priceRestoredFromStorage = false;
+
   function renderPriceReactive() {
+    var priceInput = document.getElementById('priceInput');
+
+    // Den zuletzt selbst eingetragenen Preis merken, damit er nach einem Neuladen der Seite (die
+    // alle paar Minuten automatisch passiert) nicht wieder auf den Standardwert zurückspringt.
+    // Nur beim allerersten Aufbau der Seite wiederherstellen, nicht bei jedem automatischen Refresh -
+    // sonst würde eine gerade laufende Eingabe mitten im Tippen unterbrochen.
+    if (!priceRestoredFromStorage) {
+      priceRestoredFromStorage = true;
+      try {
+        var saved = localStorage.getItem(PRICE_STORAGE_KEY);
+        if (saved !== null && !isNaN(parseFloat(saved))) priceInput.value = saved;
+      } catch (e) { /* z.B. Privates Surfen ohne Storage-Zugriff - dann bleibt einfach der Standardwert */ }
+    }
+
     function update() {
-      var price = parseFloat(document.getElementById('priceInput').value) || 0;
+      var price = parseFloat(priceInput.value) || 0;
+      try { localStorage.setItem(PRICE_STORAGE_KEY, priceInput.value); } catch (e) { /* siehe oben */ }
       var save = (window.__todayTotalKwh || 0) * price;
       var tile = document.getElementById('saveTile');
       if (tile) tile.querySelector('.stat-value').textContent = fmtEur(save);
@@ -425,8 +443,8 @@
         if (el2 && periods[key] !== undefined) el2.textContent = fmtEur(periods[key] * price);
       });
     }
-    document.getElementById('priceInput').removeEventListener('input', update);
-    document.getElementById('priceInput').addEventListener('input', update);
+    priceInput.removeEventListener('input', update);
+    priceInput.addEventListener('input', update);
     update();
   }
 
