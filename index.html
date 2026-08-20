@@ -58,14 +58,18 @@
   .refresh-btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
   .refresh-btn:hover { color: var(--ink-1); }
 
-  h2.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 30px 0 10px; font-weight: 600; }
+  h2.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 20px 0 8px; font-weight: 600; }
   h2.section-title:first-of-type { margin-top: 0; }
 
   .kpi-row { display: contents; }
-  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-height: 96px; display: flex; flex-direction: column; justify-content: space-between; }
-  .stat-label { font-size: 12px; color: var(--ink-2); }
-  .stat-value { font-size: 25px; font-weight: 600; margin: 2px 0; }
-  .stat-split { display: flex; gap: 12px; font-size: 11.5px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
+  /* Eigene Klasse fuer die "Diese Woche/Monat/Jahr"-Kacheln weiter unten - die duerfen NICHT
+     display:contents erben (das ist nur fuer #kpiRow gedacht, siehe weiter unten), sonst stapeln
+     sie sich statt nebeneinander zu stehen. */
+  .period-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; min-height: 76px; display: flex; flex-direction: column; justify-content: space-between; }
+  .stat-label { font-size: 11.5px; color: var(--ink-2); }
+  .stat-value { font-size: 20px; font-weight: 600; margin: 2px 0; }
+  .stat-split { display: flex; gap: 12px; font-size: 11px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
   .stat-split span.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   .stat-foot { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 
@@ -73,8 +77,8 @@
      Ersparnis) und die statische Strompreis-Box: #kpiRow bekommt "display:contents", damit seine
      Kacheln direkt als Gitterelemente dieses Rasters zaehlen, obwohl kpiRow bei jedem Refresh
      komplett neu befuellt wird - die Preis-Box bleibt dabei unangetastet und behaelt ihren Wert. */
-  .kpi-and-price { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; }
-  .price-box { display: flex; flex-direction: column; justify-content: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .kpi-and-price { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
+  .price-box { display: flex; flex-direction: column; justify-content: center; gap: 6px; font-size: 12px; color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; }
   .price-input-row { display: flex; align-items: center; gap: 6px; }
   .price-input-row input { width: 74px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 
@@ -745,7 +749,7 @@
       }
       var savingsHtml = '<h3 style="margin-top:26px;">Ersparnis nach Zeitraum</h3>' +
         '<p class="chart-sub">' + historyNote + ' Zum oben eingestellten Strompreis, wächst automatisch mit.</p>' +
-        '<div class="kpi-row" style="margin-top:6px;">' +
+        '<div class="period-row" style="margin-top:6px;">' +
         periodTile('Diese Woche', periodKwh.Woche, 'saveWoche') +
         periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat') +
         periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr') +
