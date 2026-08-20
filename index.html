@@ -24,6 +24,7 @@
     --border:     rgba(17,17,17,0.12);
     --wash-1:     rgba(17,17,17,0.06);
     --wash-2:     rgba(138,138,138,0.14);
+    --total-line: #9a9a9a;
     color-scheme: light;
     max-width: 980px; margin: 0 auto; padding: 28px 20px 70px; color: var(--ink-1);
   }
@@ -32,6 +33,7 @@
     --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-3: #6c6c68;
     --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
     --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
+    --total-line: #e8e8e4;
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
@@ -40,6 +42,7 @@
       --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-3: #6c6c68;
       --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
       --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
+      --total-line: #e8e8e4;
       color-scheme: dark;
     }
   }
@@ -60,12 +63,12 @@
   h2.section-title:first-of-type { margin-top: 0; }
 
   .kpi-row { display: contents; }
-  /* Eigene Klasse fuer die "Diese Woche/Monat/Jahr"-Kacheln weiter unten - die duerfen NICHT
-     display:contents erben (das ist nur fuer #kpiRow gedacht, siehe weiter unten), sonst stapeln
-     sie sich statt nebeneinander zu stehen. */
+  /* 3-Kacheln-Raster, aktuell ungenutzt (die "Diese Woche/Monat/Jahr"-Reihe nutzt inzwischen
+     .records-row, seit die Jahres-Hochrechnung eine eigene 4. Kachel bekommen hat) - bleibt hier
+     als fertiges Bauteil fuer eine kuenftige 3er-Reihe erhalten. */
   .period-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  /* Fuer die neue Rekorde-Sektion (2 Kacheln nebeneinander) - eigene Klasse, damit sie nicht
-     versehentlich das display:contents von .kpi-row erbt. */
+  /* Fuer 2-Kacheln- bzw. 2x2-Raster (Rekorde-Sektion, Ersparnis nach Zeitraum) - eigene Klasse,
+     damit sie nicht versehentlich das display:contents von .kpi-row erbt. */
   .records-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; min-height: 76px; display: flex; flex-direction: column; justify-content: space-between; }
   .stat-label { font-size: 11.5px; color: var(--ink-2); }
@@ -91,6 +94,7 @@
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
   .legend-swatch { width: 16px; height: 2px; border-radius: 2px; background: var(--ink-1); }
   .legend-swatch.dashed { background: none; border-top: 2px dashed var(--ink-2); height: 0; }
+  .legend-swatch.dotted { background: none; border-top: 2px dotted var(--total-line); height: 0; }
 
   svg { display: block; width: 100%; height: auto; overflow: visible; }
   #houseFlow { background: #ffffff; border-radius: 8px; overflow: hidden; }
@@ -99,8 +103,13 @@
   .axis-label { fill: var(--ink-3); font-size: 11px; }
   .line-a { fill: none; stroke: var(--ink-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .line-b { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-dasharray: 5 4; stroke-linecap: round; stroke-linejoin: round; }
+  /* Dritte Linie fuer die zusammengerechnete Gesamtleistung beider Anlagen - bewusst gepunktet und
+     in der eigenen --total-line-Farbe (heller/"weisslicher" Ton im Dark Mode, dezentes Grau im Light
+     Mode), damit sie sich klar von den beiden Anlagen-Linien abhebt. */
+  .line-c { fill: none; stroke: var(--total-line); stroke-width: 2; stroke-dasharray: 2 4; stroke-linecap: round; stroke-linejoin: round; }
   .direct-label { font-size: 12px; font-weight: 600; fill: var(--ink-1); }
   .direct-label.muted { fill: var(--ink-2); }
+  .direct-label.total { fill: var(--total-line); }
 
   .crosshair { stroke: var(--baseline); stroke-width: 1; opacity: 0; pointer-events: none; }
   .hover-dot { r: 4; stroke-width: 2; opacity: 0; pointer-events: none; stroke: var(--surface-1); }
@@ -110,6 +119,7 @@
   .tooltip-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }
   .tooltip-key { width: 10px; height: 2px; border-radius: 2px; margin-right: 6px; background: var(--ink-1); }
   .tooltip-key.b { background: var(--ink-2); }
+  .tooltip-key.c { background: var(--total-line); }
   .tooltip-name { color: var(--ink-2); display: flex; align-items: center; }
   .tooltip-val { color: var(--ink-1); font-weight: 600; font-variant-numeric: tabular-nums; }
 
@@ -358,10 +368,11 @@
     requestAnimationFrame(step);
   }
 
-  // Kleine Sparkline (Mini-Verlauf) fuer die "Leistung jetzt"-Kachel: zeigt den Verlauf der
-  // gemeinsamen Gesamtleistung ueber den heutigen Tag, ganz ohne zusaetzliche Abfrage - nutzt
-  // dieselben Live-Rohdaten, die ohnehin schon fuer "Verlauf heute" geladen sind.
-  function buildSparkline(devices, todayByDevice) {
+  // Fasst Punkte aller Anlagen mit demselben exakten Zeitstempel zu einem gemeinsamen
+  // "Gesamtleistung"-Punkt zusammen (die Geraete werden ja im selben Erfassungslauf geloggt, haben
+  // also praktisch denselben Zeitstempel). Wird sowohl fuer die Sparkline als auch fuer die dritte
+  // Linie im "Verlauf heute"-Chart benutzt.
+  function buildTotalSeries(devices, todayByDevice) {
     var byTime = {};
     devices.forEach(function (d) {
       (todayByDevice[d] || []).forEach(function (r) {
@@ -370,11 +381,19 @@
       });
     });
     var keys = Object.keys(byTime).map(Number).sort(function (a, b) { return a - b; });
-    if (keys.length < 2) return '';
-    var values = keys.map(function (k) { return byTime[k]; });
+    return keys.map(function (k) { return { time: new Date(k), power: byTime[k] }; });
+  }
+
+  // Kleine Sparkline (Mini-Verlauf) fuer die "Leistung jetzt"-Kachel: zeigt den Verlauf der
+  // gemeinsamen Gesamtleistung ueber den heutigen Tag, ganz ohne zusaetzliche Abfrage - nutzt
+  // dieselben Live-Rohdaten, die ohnehin schon fuer "Verlauf heute" geladen sind.
+  function buildSparkline(devices, todayByDevice) {
+    var series = buildTotalSeries(devices, todayByDevice);
+    if (series.length < 2) return '';
+    var values = series.map(function (p) { return p.power; });
     var maxV = Math.max.apply(null, values.concat([1]));
     var W = 220, H = 40, pad = 3;
-    var stepX = (W - pad * 2) / (keys.length - 1);
+    var stepX = (W - pad * 2) / (values.length - 1);
     function yPos(v) { return H - pad - (v / maxV) * (H - pad * 2); }
     var points = values.map(function (v, i) { return (pad + i * stepX).toFixed(1) + ',' + yPos(v).toFixed(1); }).join(' ');
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:30px;display:block;margin-top:6px;" preserveAspectRatio="none">' +
@@ -592,34 +611,76 @@
   }
 
   var PRICE_STORAGE_KEY = 'bkw-strompreis';
-  var priceRestoredFromStorage = false;
+
+  // Den zuletzt selbst eingetragenen Preis merken, damit er nach einem Neuladen der Seite (die
+  // alle paar Minuten automatisch passiert) nicht wieder auf den Standardwert zurückspringt. Läuft
+  // einmalig ganz am Anfang (statt erst beim ersten renderPriceReactive-Aufruf), damit der Preis
+  // schon feststeht, bevor irgendeine Berechnung ihn braucht.
+  (function restorePriceFromStorage() {
+    try {
+      var saved = localStorage.getItem(PRICE_STORAGE_KEY);
+      if (saved !== null && !isNaN(parseFloat(saved))) document.getElementById('priceInput').value = saved;
+    } catch (e) { /* z.B. Privates Surfen ohne Storage-Zugriff - dann bleibt einfach der Standardwert */ }
+  })();
+
+  // Echte, bereits bekannte Tarifänderungen: hier eine Zeile ergänzen, sobald sich der Strompreis
+  // tatsächlich ändert ("ab" = Datum, ab dem der neue Preis gilt; "vorher" = der bis dahin gültige,
+  // jetzt einzufrierende alte Preis). Der jeweils AKTUELLSTE Preis kommt weiterhin live aus dem
+  // Eingabefeld "Angenommener Strompreis" - nur die Vergangenheit wird hier fest hinterlegt. So
+  // rechnen "Diese Woche/Monat/Jahr" und die Hochrechnung für Tage VOR einer Änderung automatisch
+  // mit dem damals gültigen (eingefrorenen) Preis, unabhängig davon, was später im Eingabefeld
+  // eingetragen wird - und nur Tage AB der Änderung nutzen den aktuellen/live eingetragenen Preis.
+  // Aktuell noch leer (noch keine Änderung bekannt) - dadurch verhält sich alles exakt wie bisher.
+  var PRICE_CHANGES = [
+    // Beispiel für die Preisänderung Anfang September: { ab: '2026-09-01', vorher: 0.2773 }
+  ];
+
+  // Liefert fuer einen Tag (dayKey-String) den damals gueltigen, eingefrorenen Preis - oder null,
+  // wenn dieser Tag in die aktuelle/live Preisperiode faellt (dann gilt der Wert aus dem Eingabefeld).
+  function frozenPriceForDay(dayKeyStr) {
+    var sorted = PRICE_CHANGES.slice().sort(function (a, b) { return a.ab < b.ab ? -1 : (a.ab > b.ab ? 1 : 0); });
+    for (var i = 0; i < sorted.length; i++) {
+      if (sorted[i].ab > dayKeyStr) return sorted[i].vorher;
+    }
+    return null;
+  }
+
+  // Teilt eine Liste von Tagen (mit jeweiliger kWh-Menge) in "schon feststehender Euro-Betrag"
+  // (Tage vor einer bekannten Preisänderung) und "kWh, die noch mit dem aktuellen/live Preis
+  // bewertet werden muessen" auf. So kann der Euro-Betrag bei jeder Preiseingabe sofort neu
+  // berechnet werden, ohne die schon vergangenen, eingefrorenen Tage neu bewerten zu muessen.
+  function splitEuroForDays(dayKeysArr, kwhForDayFn) {
+    var frozenEuro = 0, liveKwh = 0;
+    dayKeysArr.forEach(function (dk) {
+      var kwh = kwhForDayFn(dk);
+      var frozen = frozenPriceForDay(dk);
+      if (frozen === null) liveKwh += kwh; else frozenEuro += kwh * frozen;
+    });
+    return { frozenEuro: frozenEuro, liveKwh: liveKwh };
+  }
+
+  function eurFromSplit(split, livePrice) {
+    return (split ? split.frozenEuro + split.liveKwh * livePrice : 0);
+  }
 
   function renderPriceReactive() {
     var priceInput = document.getElementById('priceInput');
 
-    // Den zuletzt selbst eingetragenen Preis merken, damit er nach einem Neuladen der Seite (die
-    // alle paar Minuten automatisch passiert) nicht wieder auf den Standardwert zurückspringt.
-    // Nur beim allerersten Aufbau der Seite wiederherstellen, nicht bei jedem automatischen Refresh -
-    // sonst würde eine gerade laufende Eingabe mitten im Tippen unterbrochen.
-    if (!priceRestoredFromStorage) {
-      priceRestoredFromStorage = true;
-      try {
-        var saved = localStorage.getItem(PRICE_STORAGE_KEY);
-        if (saved !== null && !isNaN(parseFloat(saved))) priceInput.value = saved;
-      } catch (e) { /* z.B. Privates Surfen ohne Storage-Zugriff - dann bleibt einfach der Standardwert */ }
-    }
-
     function update() {
       var price = parseFloat(priceInput.value) || 0;
       try { localStorage.setItem(PRICE_STORAGE_KEY, priceInput.value); } catch (e) { /* siehe oben */ }
-      var save = (window.__todayTotalKwh || 0) * price;
+      var todayFrozen = frozenPriceForDay(dayKey(new Date()));
+      var todayPrice = todayFrozen === null ? price : todayFrozen;
+      var save = (window.__todayTotalKwh || 0) * todayPrice;
       var tile = document.getElementById('saveTile');
       if (tile) tile.querySelector('.stat-value').textContent = fmtEur(save);
-      var periods = window.__periodKwh || {};
+      var splits = window.__periodSplits || {};
       ['Woche', 'Monat', 'Jahr'].forEach(function (key) {
         var el2 = document.getElementById('save' + key);
-        if (el2 && periods[key] !== undefined) el2.textContent = fmtEur(periods[key] * price);
+        if (el2 && splits[key]) el2.textContent = fmtEur(eurFromSplit(splits[key], price));
       });
+      var hochEl = document.getElementById('saveHochrechnung');
+      if (hochEl && splits.Hochrechnung) hochEl.textContent = 'ca. ' + fmtEur(eurFromSplit(splits.Hochrechnung, price));
     }
     priceInput.removeEventListener('input', update);
     priceInput.addEventListener('input', update);
@@ -752,9 +813,10 @@
   function renderLineChart(devices, todayByDevice, now) {
     var svg = document.getElementById('lineChart');
     svg.innerHTML = '';
+    var totalSeries = buildTotalSeries(devices, todayByDevice);
     document.getElementById('legendArea').innerHTML = devices.map(function (d, i) {
       return '<span class="legend-item"><span class="legend-swatch' + (i === 1 ? ' dashed' : '') + '"></span>' + escapeHtml(d) + '</span>';
-    }).join('');
+    }).join('') + (totalSeries.length > 1 ? '<span class="legend-item"><span class="legend-swatch dotted"></span>Gesamt</span>' : '');
     document.getElementById('lineSub').textContent = fmtTime(now) + ' Uhr, ' + now.toLocaleDateString('de-DE');
 
     var allToday = [];
@@ -771,7 +833,9 @@
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var minT = Math.min.apply(null, allToday.map(function (r) { return r.time.getTime(); }));
     var maxT = Math.max.apply(null, allToday.map(function (r) { return r.time.getTime(); }));
-    var maxV = Math.max.apply(null, allToday.map(function (r) { return r.power; })) * 1.15 || 1;
+    // Skala muss auch die (immer hoehere) Gesamtlinie einschliessen, sonst wuerde sie oben abgeschnitten.
+    var allValuesForScale = allToday.map(function (r) { return r.power; }).concat(totalSeries.map(function (p) { return p.power; }));
+    var maxV = Math.max.apply(null, allValuesForScale) * 1.15 || 1;
     function xPos(t) { return maxT > minT ? padL + ((t - minT) / (maxT - minT)) * plotW : padL + plotW / 2; }
     function yPos(v) { return padT + plotH - (v / maxV) * plotH; }
 
@@ -790,6 +854,11 @@
       lbl2.textContent = fmtTime(new Date(lx)); svg.appendChild(lbl2);
     }
 
+    // Label-Kandidaten (Endwert je Linie) werden erst NACH dem Zeichnen aller Linien platziert, damit
+    // sich zu nah beieinanderliegende Werte (z.B. wenn beide Anlagen gerade fast gleich viel liefern)
+    // sanft auseinanderschieben lassen, statt übereinander unlesbar zu werden.
+    var labelCandidates = [];
+
     devices.forEach(function (d, i) {
       var pts = todayByDevice[d];
       if (pts.length === 0) return;
@@ -805,14 +874,41 @@
       });
       var last = pts[pts.length - 1];
       svg.appendChild(el('circle', { cx: xPos(last.time.getTime()), cy: yPos(last.power), r: 4, fill: colorFor(d, 'ink'), stroke: 'var(--surface-1)', 'stroke-width': 2 }));
-      var label = el('text', { x: xPos(last.time.getTime()) + 8, y: yPos(last.power) + 4, class: 'direct-label' + (i > 0 ? ' muted' : '') });
-      label.textContent = Math.round(last.power) + ' W';
+      labelCandidates.push({ x: xPos(last.time.getTime()) + 8, y: yPos(last.power), text: Math.round(last.power) + ' W', cls: 'direct-label' + (i > 0 ? ' muted' : '') });
+    });
+
+    // Dritte Linie: zusammengerechnete Gesamtleistung beider Anlagen, gepunktet in --total-line -
+    // bewusst OHNE die Zeichen-Animation der beiden Anlagenlinien (die wuerde das gepunktete Muster
+    // waehrend/nach der Animation kurzzeitig ueberschreiben) und ohne Flaechenfuellung, damit sie als
+    // duennere, zusaetzliche Info-Linie erkennbar bleibt statt mit den beiden Haupt-Linien zu konkurrieren.
+    if (totalSeries.length > 1) {
+      var totalPathD = totalSeries.map(function (r, idx) { return (idx === 0 ? 'M' : 'L') + xPos(r.time.getTime()).toFixed(1) + ',' + yPos(r.power).toFixed(1); }).join(' ');
+      svg.appendChild(el('path', { d: totalPathD, class: 'line-c' }));
+      var lastTotal = totalSeries[totalSeries.length - 1];
+      svg.appendChild(el('circle', { cx: xPos(lastTotal.time.getTime()), cy: yPos(lastTotal.power), r: 4, fill: 'var(--total-line)', stroke: 'var(--surface-1)', 'stroke-width': 2 }));
+      labelCandidates.push({ x: xPos(lastTotal.time.getTime()) + 8, y: yPos(lastTotal.power), text: Math.round(lastTotal.power) + ' W', cls: 'direct-label total' });
+    }
+
+    // Kollisionen aufloesen: von oben nach unten durchgehen und zu nah beieinanderliegende Labels
+    // um einen Mindestabstand nach unten auseinanderschieben.
+    labelCandidates.sort(function (a, b) { return a.y - b.y; });
+    var MIN_LABEL_GAP = 15;
+    for (var lci = 1; lci < labelCandidates.length; lci++) {
+      if (labelCandidates[lci].y - labelCandidates[lci - 1].y < MIN_LABEL_GAP) {
+        labelCandidates[lci].y = labelCandidates[lci - 1].y + MIN_LABEL_GAP;
+      }
+    }
+    labelCandidates.forEach(function (lc) {
+      var label = el('text', { x: lc.x, y: lc.y + 4, class: lc.cls });
+      label.textContent = lc.text;
       svg.appendChild(label);
     });
 
     var crosshair = el('line', { x1: 0, x2: 0, y1: padT, y2: padT + plotH, class: 'crosshair' });
     svg.appendChild(crosshair);
     var hoverDots = devices.map(function (d) { var c = el('circle', { class: 'hover-dot', fill: colorFor(d, 'ink') }); svg.appendChild(c); return c; });
+    var totalHoverDot = null;
+    if (totalSeries.length > 1) { totalHoverDot = el('circle', { class: 'hover-dot', fill: 'var(--total-line)' }); svg.appendChild(totalHoverDot); }
     var hitRect = el('rect', { x: padL, y: padT, width: plotW, height: plotH, fill: 'transparent' });
     svg.appendChild(hitRect);
     var tooltip = document.getElementById('lineTooltip');
@@ -835,11 +931,26 @@
         var val = document.createElement('span'); val.className = 'tooltip-val'; val.textContent = Math.round(nearest.power) + ' W';
         r2.appendChild(name); r2.appendChild(val); tooltip.appendChild(r2);
       });
+      if (totalHoverDot && totalSeries.length > 1) {
+        var nearestTotal = totalSeries[0], bestDiffTotal = Infinity;
+        totalSeries.forEach(function (p) { var diff = Math.abs(p.time.getTime() - t); if (diff < bestDiffTotal) { bestDiffTotal = diff; nearestTotal = p; } });
+        totalHoverDot.setAttribute('cx', xPos(nearestTotal.time.getTime())); totalHoverDot.setAttribute('cy', yPos(nearestTotal.power)); totalHoverDot.style.opacity = 1;
+        var r3 = document.createElement('div'); r3.className = 'tooltip-row';
+        var name3 = document.createElement('span'); name3.className = 'tooltip-name';
+        var key3 = document.createElement('span'); key3.className = 'tooltip-key c'; name3.appendChild(key3);
+        var nt3 = document.createElement('span'); nt3.textContent = 'Gesamt'; name3.appendChild(nt3);
+        var val3 = document.createElement('span'); val3.className = 'tooltip-val'; val3.textContent = Math.round(nearestTotal.power) + ' W';
+        r3.appendChild(name3); r3.appendChild(val3); tooltip.appendChild(r3);
+      }
       crosshair.setAttribute('x1', xPos(t)); crosshair.setAttribute('x2', xPos(t)); crosshair.style.opacity = 1;
       var wrapRect = svg.parentElement.getBoundingClientRect(); var px = xPos(t) / scale;
       tooltip.style.left = Math.min(wrapRect.width - 170, Math.max(0, px - 75)) + 'px'; tooltip.style.top = '4px'; tooltip.style.opacity = 1;
     });
-    hitRect.addEventListener('pointerleave', function () { crosshair.style.opacity = 0; hoverDots.forEach(function (c) { c.style.opacity = 0; }); tooltip.style.opacity = 0; });
+    hitRect.addEventListener('pointerleave', function () {
+      crosshair.style.opacity = 0; hoverDots.forEach(function (c) { c.style.opacity = 0; });
+      if (totalHoverDot) totalHoverDot.style.opacity = 0;
+      tooltip.style.opacity = 0;
+    });
   }
 
   function renderDataTable(rows) {
@@ -922,27 +1033,58 @@
         keys.forEach(function (k) { sum += totalKwh(k); });
         return sum;
       }
+      var monthKeysSoFar = dayKeys.filter(function (k) { return monthKeyOf(k) === curMonthKey; });
       var periodKwh = {
         Woche: sumKwhForDays(last7),
-        Monat: sumKwhForDays(dayKeys.filter(function (k) { return monthKeyOf(k) === curMonthKey; })),
+        Monat: sumKwhForDays(monthKeysSoFar),
         Jahr: sumKwhForDays(yearKeys)
       };
-      window.__periodKwh = periodKwh;
 
-      function periodTile(label, kwh, id, footHtml) {
+      // Jede Periode wird nicht mehr nur als einzelne kWh-Summe gefuehrt, sondern zusaetzlich in
+      // "schon feststehender Euro-Betrag" (Tage vor einer bekannten Preisaenderung, siehe
+      // PRICE_CHANGES weiter oben) und "kWh, die noch mit dem aktuellen/live Preis bewertet werden"
+      // aufgeteilt (splitEuroForDays) - so wirkt sich eine Preisaenderung im Eingabefeld nur auf
+      // Tage AB der Aenderung aus, nicht rueckwirkend auf schon vergangene Tage davor.
+      var periodSplits = {
+        Woche: splitEuroForDays(last7, totalKwh),
+        Monat: splitEuroForDays(monthKeysSoFar, totalKwh),
+        Jahr: splitEuroForDays(yearKeys, totalKwh)
+      };
+
+      // Jahres-Hochrechnung: einfache Fortschreibung "bisheriger Jahresertrag / bisherige Tage des
+      // Jahres" auf die noch verbleibenden Tage des Jahres - eine grobe Schaetzung (beruecksichtigt
+      // z.B. keine Saisonalitaet), aber ein interessanter Anhaltspunkt, wo das Jahr am Ende landen
+      // koennte. Fuer die verbleibenden (noch nicht gemessenen) Tage wird derselbe Tagesdurchschnitt
+      // angenommen wie bisher im Jahr - und genau wie beim bereits Erzeugten gilt: verbleibende Tage
+      // vor einer bekannten Preisaenderung zaehlen zum eingefrorenen alten Preis, Tage danach zum
+      // aktuellen/live Preis.
+      var doy = dayOfYear(refNow);
+      var dailyAvgKwh = doy > 0 ? (periodKwh.Jahr / doy) : 0;
+      var remainderDayKeys = [];
+      (function collectRemainderDays() {
+        var d = new Date(refNow.getFullYear(), refNow.getMonth(), refNow.getDate() + 1);
+        var endOfYear = new Date(refNow.getFullYear(), 11, 31);
+        while (d <= endOfYear) { remainderDayKeys.push(dayKey(d)); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); }
+      })();
+      var remainderSplit = splitEuroForDays(remainderDayKeys, function () { return dailyAvgKwh; });
+      var jahresHochrechnung = periodKwh.Jahr + dailyAvgKwh * remainderDayKeys.length;
+      periodKwh.Hochrechnung = jahresHochrechnung;
+      periodSplits.Hochrechnung = {
+        frozenEuro: periodSplits.Jahr.frozenEuro + remainderSplit.frozenEuro,
+        liveKwh: periodSplits.Jahr.liveKwh + remainderSplit.liveKwh
+      };
+      window.__periodKwh = periodKwh;
+      window.__periodSplits = periodSplits;
+
+      function periodTile(label, kwh, id, split, footHtml, splitPrefix) {
         var price = parseFloat(document.getElementById('priceInput').value) || 0;
+        splitPrefix = splitPrefix || '';
         return '<div class="stat-tile"><div class="stat-label">' + label + '</div>' +
-          '<div class="stat-value" id="' + id + '">' + fmtEur(kwh * price) + '</div>' +
-          '<div class="stat-split"><span>' + fmtKwh(kwh) + '</span></div>' +
+          '<div class="stat-value" id="' + id + '">' + splitPrefix + fmtEur(eurFromSplit(split, price)) + '</div>' +
+          '<div class="stat-split"><span>' + splitPrefix + fmtKwh(kwh) + '</span></div>' +
           (footHtml ? '<div class="stat-foot">' + footHtml + '</div>' : '') +
           '</div>';
       }
-
-      // Jahres-Hochrechnung: einfache Fortschreibung "bisheriger Jahresertrag / bisherige Tage des
-      // Jahres * 365" - eine grobe Schaetzung (beruecksichtigt z.B. keine Saisonalitaet), aber ein
-      // interessanter Anhaltspunkt, wo das Jahr am Ende landen koennte.
-      var doy = dayOfYear(refNow);
-      var jahresHochrechnung = doy > 0 ? (periodKwh.Jahr / doy * 365) : 0;
 
       var withHist = devicesToShow.filter(function (d) { return devicesWithHistory.indexOf(d) >= 0; });
       var withoutHist = devicesToShow.filter(function (d) { return withHist.indexOf(d) < 0; });
@@ -957,12 +1099,15 @@
       } else {
         historyNote = 'Aus den bisher gesammelten Live-Messwerten (seit ' + rows[0].time.toLocaleDateString('de-DE') + '). Werte aus der Meross-App von vor Beginn der Erfassung sind hier nicht enthalten.';
       }
+      // 2x2-Raster (dieselbe Klasse wie bei den Rekorden) statt 3-in-einer-Reihe, seit die
+      // Jahres-Hochrechnung eine eigene, vollwertige Kachel ist statt einer Fusszeile.
       var savingsHtml = '<h3 style="margin-top:26px;">Ersparnis nach Zeitraum</h3>' +
         '<p class="chart-sub">' + historyNote + ' Zum oben eingestellten Strompreis, wächst automatisch mit.</p>' +
-        '<div class="period-row" style="margin-top:6px;">' +
-        periodTile('Diese Woche', periodKwh.Woche, 'saveWoche') +
-        periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat') +
-        periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr', 'Hochrechnung Jahr: ca. ' + fmtKwh(jahresHochrechnung)) +
+        '<div class="records-row" style="margin-top:6px;">' +
+        periodTile('Diese Woche', periodKwh.Woche, 'saveWoche', periodSplits.Woche) +
+        periodTile('Dieser Monat', periodKwh.Monat, 'saveMonat', periodSplits.Monat) +
+        periodTile('Dieses Jahr', periodKwh.Jahr, 'saveJahr', periodSplits.Jahr) +
+        periodTile('Hochrechnung Jahr', jahresHochrechnung, 'saveHochrechnung', periodSplits.Hochrechnung, '', 'ca. ') +
         '</div>';
 
       function barChart(keys, labelFor, partialFor, totalFor, title, sub) {
@@ -1110,8 +1255,28 @@
   window.addEventListener('focus', requestLoad);
   window.addEventListener('pageshow', requestLoad);
 
+  // Der obige visibilitychange/focus-Fix reicht allein nicht immer aus: Browser koennen den
+  // normalen "setInterval" eines Tabs verlangsamen oder ganz anhalten, SOBALD der Tab laengere Zeit
+  // nicht der aktive/fokussierte war - selbst wenn er die ganze Zeit sichtbar auf dem Bildschirm
+  // stand (z.B. weil der Bildschirm zwischendurch in den Energiesparmodus ging, ein anderes Fenster
+  // kurz im Vordergrund war, o.ae.). Ein Web Worker laeuft auf einem eigenen Thread und ist von
+  // dieser Tab-Drosselung nicht betroffen - deshalb kommt der eigentliche Minuten-Takt jetzt von
+  // dort statt von einem normalen setInterval im Hauptthread. Der normale setInterval bleibt nur
+  // noch als Rueckfallnetz mit deutlich laengerem Takt (falls Web Worker in einer Umgebung mal nicht
+  // verfuegbar sein sollten).
+  var usingWorkerTick = false;
+  try {
+    var workerCode = 'setInterval(function () { postMessage("tick"); }, ' + REFRESH_MS + ');';
+    var workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+    var tickWorker = new Worker(URL.createObjectURL(workerBlob));
+    tickWorker.onmessage = function () { requestLoad(); };
+    usingWorkerTick = true;
+  } catch (e) {
+    usingWorkerTick = false;
+  }
+
   requestLoad();
-  setInterval(requestLoad, REFRESH_MS);
+  setInterval(requestLoad, usingWorkerTick ? REFRESH_MS * 5 : REFRESH_MS);
 })();
 </script>
 </body>
