@@ -776,14 +776,22 @@
     // "aktueller Wert" zurueck. Der Groessenunterschied zwischen 0% und 100% wurde bewusst deutlich
     // vergroessert (Radius 24 bis 84, statt vorher 34 bis 60).
     //
-    // Bei exakt 0 W Gesamtleistung (keine Produktion - typischerweise nachts, vor Sonnenaufgang
-    // oder nach Sonnenuntergang) wird statt der Sonne ein Mond mit ein paar Sternen gezeigt - ganz
-    // ohne zusaetzliche Abfrage einer echten Sonnenaufgangs-/Sonnenuntergangszeit, einfach direkt an
-    // der tatsaechlichen Produktion festgemacht.
+    // Bei sehr niedriger Gesamtleistung (keine echte Produktion - typischerweise nachts, vor
+    // Sonnenaufgang oder nach Sonnenuntergang) wird statt der Sonne ein Mond mit ein paar Sternen
+    // gezeigt - ganz ohne zusaetzliche Abfrage einer echten Sonnenaufgangs-/Sonnenuntergangszeit,
+    // einfach direkt an der tatsaechlichen Produktion festgemacht.
+    //
+    // Schwellwert bewusst nicht bei exakt 0 W, sondern bei NIGHT_THRESHOLD_W: in der Praxis zeigen
+    // die Steckdosen auch nachts eine kleine "Rest"-Wattzahl (Standby-Verbrauch der Messtechnik
+    // selbst, keine echte Solarproduktion) - beobachtet am 20.8.2026 gegen 21 Uhr bei 1 W. Alles bis
+    // zu diesem Wert gilt also als "Nacht". Falls sich bei Regen/Bewoelkung am Tag zeigt, dass auch
+    // echte (wenn auch sehr geringe) Solarproduktion darunter faellt und faelschlich als Mond
+    // angezeigt wird, muesste der Wert wieder gesenkt werden.
+    var NIGHT_THRESHOLD_W = 1;
     var totalNowVal = p0 + p1;
     var SKY_CX = 1560, SKY_CY = 210;
 
-    if (totalNowVal <= 0) {
+    if (totalNowVal <= NIGHT_THRESHOLD_W) {
       (function drawMoon(cx, cy) {
         var r = 46;
         var MOON_FILL = '#e7eaf2', MOON_STROKE = '#8f9db3', STAR_FILL = '#c7cfe0';
