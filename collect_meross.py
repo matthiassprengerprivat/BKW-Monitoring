@@ -184,6 +184,15 @@ async def collect_readings():
     # wiederverwendeten) Login serverseitig ungueltig machen und die Zwischen-
     # speicherung fuer den naechsten Lauf zunichtemachen. Der Login bleibt
     # einfach bis zu seinem natuerlichen Ablauf gueltig.
+    #
+    # Kurze Pause, damit die MQTT-Verbindung, die manager.close() gerade erst
+    # angestossen hat, noch bei offener Ereignisschleife fertig abgebaut werden
+    # kann. Ohne diese Pause meldet sich der MQTT-Hintergrundthread der
+    # Bibliothek manchmal erst, NACHDEM asyncio.run() die Schleife schon
+    # geschlossen hat ("Event loop is closed" in den Action-Logs) - rein
+    # kosmetisch (Daten sind da schon geschrieben, Exit-Code bleibt 0), aber
+    # unnoetiges Rauschen in den Logs/Annotations.
+    await asyncio.sleep(1.5)
     return rows
 
 
