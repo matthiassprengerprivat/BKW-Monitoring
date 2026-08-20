@@ -692,7 +692,15 @@
   function renderHouseFlow(devices, latestByDevice, records) {
     var svg = document.getElementById('houseFlow');
     svg.innerHTML = '';
-    var d0 = devices[0], d1 = devices[1];
+    // WICHTIG: nicht nach Array-Position (devices[0]/[1]) zuordnen! Die Reihenfolge in "devices"
+    // richtet sich rein danach, welches Geraet in den Roh-Log-Zeilen zufaellig zuerst auftaucht -
+    // das kann sich z.B. nach einer Meross-Neuanmeldung aendern (genau das ist einmal passiert und
+    // hat Garage/Garten im Hausbild vertauscht dargestellt, obwohl die Text-Labels selbst korrekt
+    // waren). Stattdessen explizit per Namen suchen, damit die rote Position im Bild IMMER an das
+    // Geraet mit "Garage" im Namen gebunden ist, unabhaengig von der Log-Reihenfolge.
+    var d0 = devices.filter(function (d) { return /garage/i.test(d); })[0];
+    var d1 = devices.filter(function (d) { return d !== d0; })[0];
+    if (!d0) { d0 = devices[0]; d1 = devices[1]; } // Fallback, falls kein Geraet "Garage" im Namen hat
     var p0 = d0 ? Math.round(latestByDevice[d0].power) : 0;
     var p1 = d1 ? Math.round(latestByDevice[d1].power) : 0;
     document.getElementById('flowSub').textContent =
