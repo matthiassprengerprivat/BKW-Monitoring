@@ -336,6 +336,51 @@
   function fmtEur(v) { return v.toFixed(2).replace('.', ',') + ' €'; }
   function fmtTime(d) { return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
 
+  // Zahlen-Animation: zaehlt eine Kachel-Zahl beim Neuladen (alle ~60s) sanft vom vorherigen zum
+  // neuen Wert hoch/runter, statt einfach hart umzuspringen. `key` identifiziert den Wert ueber
+  // mehrere Rebuilds von #kpiRow hinweg (das Element selbst wird bei jedem Refresh neu erzeugt).
+  // Beim allerersten Aufbau (kein vorheriger Wert bekannt) wird direkt der Zielwert angezeigt, es
+  // gibt also keine unnoetige "von 0 hoch"-Animation beim Erstladen.
+  var animatePrevValues = {};
+  function animateNumber(elNode, key, newValue, formatter) {
+    var hasPrev = animatePrevValues.hasOwnProperty(key);
+    var startValue = hasPrev ? animatePrevValues[key] : newValue;
+    animatePrevValues[key] = newValue;
+    if (!hasPrev || startValue === newValue) { elNode.textContent = formatter(newValue); return; }
+    var durationMs = 700, startTime = null;
+    function step(ts) {
+      if (startTime === null) startTime = ts;
+      var progress = Math.min(1, (ts - startTime) / durationMs);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      elNode.textContent = formatter(startValue + (newValue - startValue) * eased);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Kleine Sparkline (Mini-Verlauf) fuer die "Leistung jetzt"-Kachel: zeigt den Verlauf der
+  // gemeinsamen Gesamtleistung ueber den heutigen Tag, ganz ohne zusaetzliche Abfrage - nutzt
+  // dieselben Live-Rohdaten, die ohnehin schon fuer "Verlauf heute" geladen sind.
+  function buildSparkline(devices, todayByDevice) {
+    var byTime = {};
+    devices.forEach(function (d) {
+      (todayByDevice[d] || []).forEach(function (r) {
+        var t = r.time.getTime();
+        byTime[t] = (byTime[t] || 0) + (r.power || 0);
+      });
+    });
+    var keys = Object.keys(byTime).map(Number).sort(function (a, b) { return a - b; });
+    if (keys.length < 2) return '';
+    var values = keys.map(function (k) { return byTime[k]; });
+    var maxV = Math.max.apply(null, values.concat([1]));
+    var W = 220, H = 40, pad = 3;
+    var stepX = (W - pad * 2) / (keys.length - 1);
+    function yPos(v) { return H - pad - (v / maxV) * (H - pad * 2); }
+    var points = values.map(function (v, i) { return (pad + i * stepX).toFixed(1) + ',' + yPos(v).toFixed(1); }).join(' ');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:30px;display:block;margin-top:6px;" preserveAspectRatio="none">' +
+      '<polyline points="' + points + '" fill="none" stroke="var(--ink-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+
   var lastRows = [];
   var histByDevice = {}; // Geraet -> { Datum -> kWh }, aus den Meross-App-Exporten in HISTORICAL_FILES
 
@@ -481,18 +526,22 @@
       todayTotal += k;
     });
 
-    function tile(label, valueHtml, splitHtml, footHtml) {
+    function tile(label, valueHtml, splitHtml, footHtml, extraHtml) {
       var t = document.createElement('div'); t.className = 'stat-tile';
       t.innerHTML = '<div class="stat-label">' + label + '</div><div class="stat-value">' + valueHtml + '</div>' +
         (splitHtml ? '<div class="stat-split">' + splitHtml + '</div>' : '') +
-        (footHtml ? '<div class="stat-foot">' + footHtml + '</div>' : '');
+        (footHtml ? '<div class="stat-foot">' + footHtml + '</div>' : '') +
+        (extraHtml || '');
       return t;
     }
 
     var powerSplit = devices.map(function (d, i) {
       return '<span><span class="dot" style="background:' + (i === 0 ? 'var(--ink-1)' : 'var(--ink-2)') + '"></span>' + escapeHtml(d) + ': ' + Math.round(latestByDevice[d].power) + ' W</span>';
     }).join('');
-    kpiRow.appendChild(tile('Leistung jetzt', Math.round(totalNow) + ' W', powerSplit));
+    var sparkHtml = buildSparkline(devices, todayByDevice);
+    var powerTile = tile('Leistung jetzt', Math.round(totalNow) + ' W', powerSplit, '', sparkHtml);
+    kpiRow.appendChild(powerTile);
+    animateNumber(powerTile.querySelector('.stat-value'), 'powerNow', totalNow, function (v) { return Math.round(v) + ' W'; });
 
     var kwhSplit = devices.map(function (d, i) {
       return '<span><span class="dot" style="background:' + (i === 0 ? 'var(--ink-1)' : 'var(--ink-2)') + '"></span>' + escapeHtml(d) + ': ' + fmtKwh(todayKwhByDevice[d]) + '</span>';
@@ -525,7 +574,9 @@
         }
       }
     }
-    kpiRow.appendChild(tile('Ertrag heute', fmtKwh(todayTotal), kwhSplit, ertragFoot));
+    var ertragTile = tile('Ertrag heute', fmtKwh(todayTotal), kwhSplit, ertragFoot);
+    kpiRow.appendChild(ertragTile);
+    animateNumber(ertragTile.querySelector('.stat-value'), 'ertragHeute', todayTotal, fmtKwh);
 
     // CO2-Einsparung: 344 g/kWh ist der von Meross unabhaengige, aktuelle Emissionsfaktor des
     // deutschen Strommixes fuer 2025 (Umweltbundesamt, "CO2-Emissionen pro Kilowattstunde Strom
@@ -590,22 +641,27 @@
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
     svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet' }));
 
-    var RED = '#8a1f1f', BLUE = '#1f4e79', INK = '#1a1a1a';
+    // Beide Anlagen-Sprechblasen und die neue Gesamt-Sprechblase sind jetzt einheitlich schwarz
+    // (statt vorher rot/blau) - INK bleibt der einzige Sprechblasen-/Linien-Farbton, die Sonne oben
+    // rechts ist die einzige bewusst farbige Stelle im Bild.
+    var INK = '#1a1a1a';
     var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
-    function speechBubble(bx, by, bw, bh, tailPoints, accent, value, label) {
+    function speechBubble(bx, by, bw, bh, tailPoints, accent, value, label, valFontSize, lblFontSize) {
+      valFontSize = valFontSize || 56;
+      lblFontSize = lblFontSize || 38;
       var g = el('g', {});
-      g.appendChild(el('polygon', { points: tailPoints, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
+      if (tailPoints) g.appendChild(el('polygon', { points: tailPoints, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
       g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
       var valT = el('text', {
         x: bx + bw / 2, y: by + bh * 0.46, 'text-anchor': 'middle', 'font-family': FONT,
-        'font-weight': '700', 'font-size': 56, fill: INK
+        'font-weight': '700', 'font-size': valFontSize, fill: INK
       });
       valT.textContent = value;
       g.appendChild(valT);
       var lblT = el('text', {
         x: bx + bw / 2, y: by + bh * 0.8, 'text-anchor': 'middle', 'font-family': FONT,
-        'font-weight': '400', 'font-size': 38, fill: INK
+        'font-weight': '400', 'font-size': lblFontSize, fill: INK
       });
       lblT.textContent = label;
       g.appendChild(lblT);
@@ -617,7 +673,7 @@
     }
 
     // Zähler / Netzeinspeisung - weiter links, näher an der Hauswand zwischen Garage und Wandmodul,
-    // damit sowohl die roten (Garage) als auch der blaue (Wandmodul) Einspeisepfeil gut sichtbar bleiben.
+    // damit sowohl die Garage- als auch die Wandmodul-Einspeisepfeile gut sichtbar bleiben.
     var meterX = 530, meterY = 1080, meterR = 20;
     svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: meterR, fill: '#ffffff', stroke: INK, 'stroke-width': 5 }));
     svg.appendChild(el('path', {
@@ -628,45 +684,44 @@
     meterLbl.textContent = 'Netzeinspeisung';
     svg.appendChild(meterLbl);
 
-    // Garage (2 Module, 1 Wechselrichter/Steckdose) -> Zähler, rot, animiert
+    // Garage (2 Module, 1 Wechselrichter/Steckdose) -> Zähler, animiert
     // Beide Startpunkte liegen jetzt exakt auf den beiden Modulen (per Bildanalyse vermessen).
-    svg.appendChild(flowPath('M 260 1246 C 300 1190, 420 1140, 508 1095', RED));
-    svg.appendChild(flowPath('M 383 1244 C 420 1200, 470 1150, 515 1092', RED));
-    // Modul an der Hauswand (Richtung Garten) -> Zähler, blau, animiert.
+    svg.appendChild(flowPath('M 260 1246 C 300 1190, 420 1140, 508 1095', INK));
+    svg.appendChild(flowPath('M 383 1244 C 420 1200, 470 1150, 515 1092', INK));
+    // Modul an der Hauswand (Richtung Garten) -> Zähler, animiert.
     // Bogen von oben in den Zähler, damit die Linie nicht durch den "Netzeinspeisung"-Text läuft.
-    svg.appendChild(flowPath('M 755 1054 C 700 1010, 610 1015, 540 1063', BLUE));
+    svg.appendChild(flowPath('M 755 1054 C 700 1010, 610 1015, 540 1063', INK));
 
-    // Sprechblasen mit live Werten
-    speechBubble(15, 970, 380, 150, '220,1120 320,1120 300,1210', RED, p0 + ' W', d0 || 'Solar Garage');
-    speechBubble(920, 910, 380, 150, '920,1000 920,1040 875,955', BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
+    // Sprechblasen mit live Werten - alle drei (beide Anlagen + Gesamt) jetzt einheitlich schwarz.
+    speechBubble(15, 970, 380, 150, '220,1120 320,1120 300,1210', INK, p0 + ' W', d0 || 'Solar Garage');
+    speechBubble(920, 910, 380, 150, '920,1000 920,1040 875,955', INK, p1 + ' W', d1 || 'Solar Wandmontage');
 
-    // Gesamt-Wert oben im Bild, mittig über dem Dachgiebel
-    var totalBig = el('text', { x: 1020, y: 105, 'text-anchor': 'middle', 'font-family': FONT, 'font-weight': '700', 'font-size': 62, fill: INK });
-    totalBig.textContent = (p0 + p1) + ' W';
-    svg.appendChild(totalBig);
-    var totalSub = el('text', { x: 1020, y: 145, 'text-anchor': 'middle', 'font-family': FONT, 'font-size': 32, fill: '#6a6a6a' });
-    totalSub.textContent = 'gerade jetzt insgesamt';
-    svg.appendChild(totalSub);
+    // Gesamt-Wert oben im Bild, jetzt ebenfalls als Sprechblase (wie die beiden Anlagen-Werte),
+    // mit einem kleinen Schwanz hinunter zum Dachfirst.
+    speechBubble(760, 25, 520, 190, '955,215 1085,215 1020,268', INK, (p0 + p1) + ' W', 'gerade jetzt insgesamt', 58, 32);
 
-    // Sonne oben rechts im Himmel: rein dekorativ, monochrom (passt zum Rest der handgezeichneten
-    // Optik) und skaliert mit der aktuellen Gesamtleistung im Verhaeltnis zur bisherigen Rekord-
-    // leistung (records.maxPower) - je naeher an der Rekordleistung, desto groesser/kraeftiger die
-    // Sonne. Ohne Rekordwert (z.B. ganz am Anfang) faellt sie einfach auf "aktueller Wert" zurueck.
+    // Sonne oben rechts im Himmel: rein dekorativ, jetzt farbig (warmes Gelb/Orange, einziger
+    // Farbtupfer im sonst schwarz-weissen Bild) und skaliert mit der aktuellen Gesamtleistung im
+    // Verhaeltnis zur bisherigen Rekordleistung (records.maxPower) - je naeher an der Rekordleistung,
+    // desto groesser/kraeftiger die Sonne. Ohne Rekordwert (z.B. ganz am Anfang) faellt sie einfach
+    // auf "aktueller Wert" zurueck. Skalierung bewusst noch nicht weiter angepasst - erst beobachten,
+    // wie sie sich im echten Betrieb ueber den Tag/das Jahr verhaelt.
     var totalNowVal = p0 + p1;
     var maxEverPower = (records && records.maxPower) ? records.maxPower : totalNowVal;
     var sunRatio = maxEverPower > 0 ? Math.max(0, Math.min(1, totalNowVal / maxEverPower)) : 0;
     (function drawSun(cx, cy, ratio) {
       var baseR = 34, r = baseR + 26 * ratio;
       var opacity = (0.35 + 0.65 * ratio).toFixed(2);
+      var SUN_FILL = '#ffd166', SUN_STROKE = '#e8a33d';
       var g = el('g', { opacity: opacity });
-      g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: 'none', stroke: INK, 'stroke-width': 5 }));
+      g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: SUN_FILL, stroke: SUN_STROKE, 'stroke-width': 5 }));
       var rayCount = 8;
       for (var i = 0; i < rayCount; i++) {
         var angle = (Math.PI * 2 / rayCount) * i;
         var innerR = r + 14, outerR = innerR + 22 + 14 * ratio;
         var x1 = cx + Math.cos(angle) * innerR, y1 = cy + Math.sin(angle) * innerR;
         var x2 = cx + Math.cos(angle) * outerR, y2 = cy + Math.sin(angle) * outerR;
-        g.appendChild(el('line', { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), stroke: INK, 'stroke-width': 5, 'stroke-linecap': 'round' }));
+        g.appendChild(el('line', { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), stroke: SUN_STROKE, 'stroke-width': 5, 'stroke-linecap': 'round' }));
       }
       svg.appendChild(g);
     })(1560, 210, sunRatio);
