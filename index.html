@@ -641,10 +641,10 @@
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
     svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet' }));
 
-    // Beide Anlagen-Sprechblasen und die neue Gesamt-Sprechblase sind jetzt einheitlich schwarz
-    // (statt vorher rot/blau) - INK bleibt der einzige Sprechblasen-/Linien-Farbton, die Sonne oben
-    // rechts ist die einzige bewusst farbige Stelle im Bild.
-    var INK = '#1a1a1a';
+    // Die beiden Anlagen behalten ihre Farbcodierung (rot = Garage, blau = Wandmontage/Garten) -
+    // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz, um sie optisch von den beiden
+    // Einzelwerten abzuheben.
+    var RED = '#8a1f1f', BLUE = '#1f4e79', INK = '#1a1a1a';
     var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
     function speechBubble(bx, by, bw, bh, tailPoints, accent, value, label, valFontSize, lblFontSize) {
@@ -673,7 +673,7 @@
     }
 
     // Zähler / Netzeinspeisung - weiter links, näher an der Hauswand zwischen Garage und Wandmodul,
-    // damit sowohl die Garage- als auch die Wandmodul-Einspeisepfeile gut sichtbar bleiben.
+    // damit sowohl die roten (Garage) als auch der blaue (Wandmodul) Einspeisepfeil gut sichtbar bleiben.
     var meterX = 530, meterY = 1080, meterR = 20;
     svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: meterR, fill: '#ffffff', stroke: INK, 'stroke-width': 5 }));
     svg.appendChild(el('path', {
@@ -684,17 +684,17 @@
     meterLbl.textContent = 'Netzeinspeisung';
     svg.appendChild(meterLbl);
 
-    // Garage (2 Module, 1 Wechselrichter/Steckdose) -> Zähler, animiert
+    // Garage (2 Module, 1 Wechselrichter/Steckdose) -> Zähler, rot, animiert
     // Beide Startpunkte liegen jetzt exakt auf den beiden Modulen (per Bildanalyse vermessen).
-    svg.appendChild(flowPath('M 260 1246 C 300 1190, 420 1140, 508 1095', INK));
-    svg.appendChild(flowPath('M 383 1244 C 420 1200, 470 1150, 515 1092', INK));
-    // Modul an der Hauswand (Richtung Garten) -> Zähler, animiert.
+    svg.appendChild(flowPath('M 260 1246 C 300 1190, 420 1140, 508 1095', RED));
+    svg.appendChild(flowPath('M 383 1244 C 420 1200, 470 1150, 515 1092', RED));
+    // Modul an der Hauswand (Richtung Garten) -> Zähler, blau, animiert.
     // Bogen von oben in den Zähler, damit die Linie nicht durch den "Netzeinspeisung"-Text läuft.
-    svg.appendChild(flowPath('M 755 1054 C 700 1010, 610 1015, 540 1063', INK));
+    svg.appendChild(flowPath('M 755 1054 C 700 1010, 610 1015, 540 1063', BLUE));
 
-    // Sprechblasen mit live Werten - alle drei (beide Anlagen + Gesamt) jetzt einheitlich schwarz.
-    speechBubble(15, 970, 380, 150, '220,1120 320,1120 300,1210', INK, p0 + ' W', d0 || 'Solar Garage');
-    speechBubble(920, 910, 380, 150, '920,1000 920,1040 875,955', INK, p1 + ' W', d1 || 'Solar Wandmontage');
+    // Sprechblasen mit live Werten - Garage rot, Wandmontage/Garten blau, wie ursprünglich.
+    speechBubble(15, 970, 380, 150, '220,1120 320,1120 300,1210', RED, p0 + ' W', d0 || 'Solar Garage');
+    speechBubble(920, 910, 380, 150, '920,1000 920,1040 875,955', BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
 
     // Gesamt-Wert oben im Bild, jetzt ebenfalls als Sprechblase (wie die beiden Anlagen-Werte),
     // mit einem kleinen Schwanz hinunter zum Dachfirst.
@@ -1065,9 +1065,31 @@
       });
   }
 
-  document.getElementById('refreshBtn').addEventListener('click', load);
-  load();
-  setInterval(load, REFRESH_MS);
+  // Handys/Browser pausieren "setInterval" oft, wenn die Seite/App im Hintergrund ist (Bildschirm
+  // aus, andere App im Vordergrund, Tab im Hintergrund) - die Google-Tabelle wird dann zwar
+  // weiterhin minütlich befüllt, aber die Webseite fragt in der Zeit gar nicht mehr nach und zeigt
+  // beim Zurückkommen einen veralteten Stand ("Letzte Messung: ... vor X Min."), bis man von Hand
+  // aktualisiert oder den Tab komplett schließt und neu öffnet. Deshalb hier zusätzlich sofort neu
+  // laden, sobald die Seite/App wieder sichtbar wird bzw. den Fokus bekommt - ohne dass man dafür
+  // irgendetwas tun muss. Ein kurzer Mindestabstand verhindert, dass z.B. visibilitychange und
+  // focus für dasselbe "Zurückkommen" zweimal fast gleichzeitig laden.
+  var lastLoadAt = 0;
+  function requestLoad() {
+    var now = Date.now();
+    if (now - lastLoadAt < 3000) return;
+    lastLoadAt = now;
+    load();
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', requestLoad);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) requestLoad();
+  });
+  window.addEventListener('focus', requestLoad);
+  window.addEventListener('pageshow', requestLoad);
+
+  requestLoad();
+  setInterval(requestLoad, REFRESH_MS);
 })();
 </script>
 </body>
