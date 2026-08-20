@@ -4,9 +4,10 @@ on:
   schedule:
     # Ruecktfallnetz: GitHub's eigener Zeit-Trigger ("schedule") ist offiziell nur "best effort" -
     # bei Last auf GitHub-Seite werden Ticks manchmal komplett uebersprungen (das hatten wir live
-    # beobachtet: statt alle 5 Minuten liefen die Werte alle 20-100+ Minuten ein). Der eigentliche
-    # 5-Minuten-Takt kommt daher unten aus der Selbst-Trigger-Kette; dieser Cron ist nur die
-    # Rueckfallebene, falls diese Kette mal abreisst (z.B. nach einem GitHub-Ausfall).
+    # beobachtet). Der eigentliche 1-Minuten-Takt kommt daher unten aus der Selbst-Trigger-Kette;
+    # dieser Cron ist nur die Rueckfallebene, falls diese Kette mal abreisst (z.B. nach einem
+    # GitHub-Ausfall). Er laeuft bewusst nicht auch jede Minute, das waere fuer einen reinen
+    # Rueckfallnetz unnoetig - alle 5 Minuten reicht, um die Kette im Ernstfall wiederzubeleben.
     - cron: "*/5 * * * *"
   workflow_dispatch: {}   # erlaubt manuelles Starten UND wird von diesem Workflow selbst benutzt,
                           # um sich nach jedem Lauf zuverlaessig wieder neu zu starten (siehe unten).
@@ -35,6 +36,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"   # beschleunigt die Abhaengigkeiten-Installation bei jedem Lauf -
+                         # bei einem 1-Minuten-Takt zaehlt jede Sekunde Puffer.
 
       - name: Abhaengigkeiten installieren
         run: pip install -r requirements.txt
@@ -51,16 +54,16 @@ jobs:
       # fehlschlaegt (z.B. kurzer Meross-Ausfall) - sonst wuerde ein einzelner Fehlschlag die ganze
       # Selbst-Trigger-Kette abreissen lassen, und wir waeren wieder auf das unzuverlaessige
       # schedule-Rueckfallnetz angewiesen.
-      - name: Bis zur vollen 5-Minuten-Marke warten
+      - name: Bis zur vollen 1-Minuten-Marke warten
         if: always()
         run: |
           ELAPSED=$(( $(date +%s) - ${{ steps.start.outputs.epoch }} ))
-          REMAINING=$(( 300 - ELAPSED ))
+          REMAINING=$(( 60 - ELAPSED ))
           if [ "$REMAINING" -gt 0 ]; then
-            echo "Warte noch ${REMAINING}s, damit der naechste Lauf ca. 5 Minuten nach diesem beginnt."
+            echo "Warte noch ${REMAINING}s, damit der naechste Lauf ca. 1 Minute nach diesem beginnt."
             sleep "$REMAINING"
           else
-            echo "Dieser Lauf hat bereits laenger als 5 Minuten gedauert, starte den naechsten sofort."
+            echo "Dieser Lauf hat bereits laenger als 1 Minute gedauert, starte den naechsten sofort."
           fi
 
       # workflow_dispatch (manuelles/API-Ausloesen) ist bei GitHub zuverlaessig - im Gegensatz zum
