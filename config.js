@@ -5,5 +5,4 @@
 // WICHTIG: Der Link unten ist der letzte Stand, den wir gemeinsam eingerichtet haben. Bitte einmal
 // prüfen, dass es wirklich der Link zu eurem "Log"-Tab ist (nicht "Ganzes Dokument"), bevor ihr
 // diese Datei ins Repo hochladet - ihr wisst selbst am besten, welcher Link bei euch gerade aktiv ist.
-var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQMWqWqdLYCETDjgfgTuvcgwBu4cR0F_NDw45jHOiYlwhHjYNnGDS9vku6sjhlB27mdfmBRWCNSlMN8/pub?gid=1978022599&single=true&output=csv";
- 
+var CSV_URL = "https://docs.google.com/spreadsheets/d/1NIzBtVhiM6uhWBfdarMKfbDlWYVakJoy-gRRUzbfAek/gviz/tq?tqx=out:csv&sheet=Log";
