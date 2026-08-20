@@ -85,11 +85,16 @@ def load_cached_creds():
         raw = ws.acell("A1").value
         if not raw:
             return None
-        try:
-            parsed = json.loads(raw)
-        except (TypeError, ValueError):
-            parsed = raw
-        return MerossCloudCreds.from_json(parsed)
+        # WICHTIG: MerossCloudCreds.from_json() erwartet den rohen JSON-STRING und ruft
+        # intern selbst json.loads() darauf auf. Hier zusaetzlich vorher json.loads(raw)
+        # aufzurufen (wie frueher) uebergibt from_json() bereits ein dict statt eines
+        # Strings - das schlaegt dann IMMER mit "the JSON object must be str, bytes or
+        # bytearray, not dict" fehl. Ergebnis: die Zwischenspeicherung hat nie funktioniert,
+        # es wurde bei jedem Lauf (jede Minute!) ein komplett neuer Login/Token bei Meross
+        # ausgestellt, bis der Account wegen zu vieler offener Tokens von Meross selbst
+        # temporaer gesperrt wurde (TooManyTokensException). Deshalb: raw unveraendert
+        # durchreichen, kein zusaetzliches json.loads() hier.
+        return MerossCloudCreds.from_json(raw)
     except Exception as exc:
         print(f"Kein nutzbarer zwischengespeicherter Meross-Login vorhanden ({exc}), melde mich frisch an.")
         return None
