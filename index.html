@@ -47,10 +47,8 @@
   .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
   h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
   .subtitle { font-size: 13px; color: var(--ink-2); margin: 0; }
-  .theme-toggle { margin-left: auto; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; flex: none; }
-  .theme-toggle:hover { color: var(--ink-1); }
 
-  .status-banner { margin: 14px 0 24px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); font-size: 12.5px; display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
+  .status-banner { margin: 10px 0 16px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); font-size: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
   .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-1); flex: none; animation: pulse 1.8s infinite; }
   .live-dot.stale { background: var(--ink-3); animation: none; }
   @keyframes pulse { 0%,100% { opacity: .9; } 50% { opacity: .25; } }
@@ -152,7 +150,6 @@
   <div class="status-banner" id="statusBanner">
     <span class="live-dot" id="liveDot"></span>
     <span id="statusText" class="status-text">Lade Daten…</span>
-    <button class="theme-toggle" id="themeToggle" type="button">Modus</button>
   </div>
 
   <div id="errorArea"></div>
@@ -216,12 +213,8 @@
   var REFRESH_MS = 1 * 60 * 1000;
 
   var root = document.documentElement;
-  document.getElementById('themeToggle').addEventListener('click', function () {
-    var c = root.getAttribute('data-theme');
-    if (c === 'dark') root.setAttribute('data-theme', 'light');
-    else if (c === 'light') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', 'dark');
-  });
+  // Der manuelle Hell/Dunkel-Umschalter ("Modus") wurde entfernt - die Seite folgt jetzt nur noch
+  // automatisch der Geraete-/Systemeinstellung (siehe die prefers-color-scheme-Regeln oben im CSS).
 
   var deviceOrder = [];
   function colorFor(device, part) {
