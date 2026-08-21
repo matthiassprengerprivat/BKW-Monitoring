@@ -802,7 +802,7 @@
     var p1 = d1 ? Math.round(latestByDevice[d1].power) : 0;
     var weatherFoot = '';
     if (weatherData && weatherData.current && typeof weatherData.current.cloud_cover === 'number') {
-      weatherFoot = '  ·  Bewölkung: ' + Math.round(weatherData.current.cloud_cover) + ' %';
+      weatherFoot = 'Bewölkung: ' + Math.round(weatherData.current.cloud_cover) + ' %';
       if (weatherData.daily && weatherData.daily.sunset && weatherData.daily.sunset[0]) {
         weatherFoot += '  ·  Sonnenuntergang: ' + fmtTime(new Date(weatherData.daily.sunset[0])) + ' Uhr';
       }
@@ -810,13 +810,14 @@
     // Die Pro-Anlage-Werte (Solar Garage/Garten) stehen zwar schon in der "Leistung jetzt"-Kachel
     // oben und in der Sprechblase im Bild selbst, sollen hier aber trotzdem stehen bleiben (auf
     // Wunsch) - eigenes <span> nur noch, damit auf dem Handy gezielt ein etwas kleinerer Font
-    // (.chart-sub) greifen kann, ohne den Desktop-Text zu verkleinern. Fester Zeilenumbruch (<br>)
-    // vor "Gesamt", statt es einfach an die Pro-Anlage-Werte anzuhaengen und dem Flow-Umbruch zu
-    // ueberlassen - so steht "Gesamt" (und die Wetter-Infos dahinter) immer verlaesslich in der
-    // zweiten Zeile, unabhaengig von der Bildschirmbreite.
+    // (.chart-sub) greifen kann, ohne den Desktop-Text zu verkleinern. Feste Zeilenumbrueche (<br>)
+    // vor "Gesamt" und vor den Wetter-Infos, statt sie einfach anzuhaengen und dem Flow-Umbruch zu
+    // ueberlassen - so stehen Pro-Anlage-Werte, "Gesamt" und Bewoelkung/Sonnenuntergang immer
+    // verlaesslich in 3 eigenen Zeilen, unabhaengig von der Bildschirmbreite.
     document.getElementById('flowSub').innerHTML =
       '<span class="flow-detail">' + (d0 ? escapeHtml(d0) + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + escapeHtml(d1) + ': ' + p1 + ' W' : '') + '</span><br>' +
-      'Gesamt: ' + (p0 + p1) + ' W' + escapeHtml(weatherFoot);
+      'Gesamt: ' + (p0 + p1) + ' W' +
+      (weatherFoot ? '<br>' + escapeHtml(weatherFoot) : '');
 
     // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
