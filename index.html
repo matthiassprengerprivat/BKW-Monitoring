@@ -251,17 +251,17 @@
       </table>
     </div>
 
-    <h2 class="section-title">Rekorde</h2>
-    <div class="chart-card" id="recordsCard"></div>
-
-    <h2 class="section-title">Garage vs. Garten</h2>
-    <div class="chart-card" id="comparisonCard"></div>
-
     <h2 class="section-title">Wochen-, Monats- &amp; Jahresübersicht</h2>
     <div class="chart-card" id="longTermCard"></div>
 
+    <h2 class="section-title">Rekorde</h2>
+    <div class="chart-card" id="recordsCard"></div>
+
     <h2 class="section-title">Kalender-Übersicht</h2>
     <div class="chart-card" id="calendarCard"></div>
+
+    <h2 class="section-title">Garage vs. Garten</h2>
+    <div class="chart-card" id="comparisonCard"></div>
 
   </div>
 
@@ -596,10 +596,10 @@
     renderHouseFlow(devices, latestByDevice, records);
     renderLineChart(devices, todayByDevice, now);
     renderDataTable(rows);
-    renderRecords(records);
-    renderComparison(computeComparison(dayStats, devices));
     renderLongTerm(rows, devices, historySpanDays, dayStats);
+    renderRecords(records);
     renderCalendarHeatmap(computeCalendarHeatmap(dayStats, records, now));
+    renderComparison(computeComparison(dayStats, devices));
     renderPriceReactive();
   }
 
