@@ -101,10 +101,11 @@
      Auf dem Handy stattdessen ein kleiner vertikaler Abstand zwischen den beiden Zeilen. */
   @media (max-width: 600px) {
     .stat-split { gap: 2px; }
-    /* Siehe Kommentar bei der flowSub-Befuellung: Pro-Anlage-Werte stehen hier schon in der Kachel
-       oben UND im Bild selbst - auf dem Handy ausgeblendet, damit die Unterzeile nicht 3-zeilig wird
-       und das Hausbild unnoetig nach unten schiebt. */
-    .flow-detail { display: none; }
+    /* Pro-Anlage-Werte unter dem Hausbild waren hier zeitweise auf dem Handy ausgeblendet (steht ja
+       auch schon in der Kachel oben und im Bild selbst) - auf Wunsch aber wieder eingeblendet, auch
+       wenn die Unterzeile dadurch wieder mehrzeilig wird. Etwas kleinerer Font hier (chart-sub),
+       damit es nicht ganz so viel Platz kostet. */
+    .chart-card .chart-sub { font-size: 11px; }
 
     /* Auf Wunsch weiter verkleinert: beim Oeffnen der App auf dem Handy soll moeglichst das komplette
        Hausbild ohne Scrollen sichtbar sein. Alles hier betrifft nur Abstaende/Groessen, keine
@@ -806,12 +807,10 @@
         weatherFoot += '  ·  Sonnenuntergang: ' + fmtTime(new Date(weatherData.daily.sunset[0])) + ' Uhr';
       }
     }
-    // Die Pro-Anlage-Werte (Solar Garage/Garten) stehen bereits identisch in der "Leistung jetzt"-
-    // Kachel oben UND in der grossen Sprechblase im Bild selbst - hier nochmal ausgeschrieben macht
-    // diese Unterzeile auf dem Handy 3-zeilig (seit der Wetter-Ergaenzung dazugekommen ist), was das
-    // Hausbild unnoetig weiter nach unten schiebt. Deshalb steht dieser Teil jetzt in einem eigenen
-    // <span>, das auf dem Handy per CSS ausgeblendet wird (siehe .flow-detail) - am Desktop bleibt
-    // er wie gewohnt sichtbar.
+    // Die Pro-Anlage-Werte (Solar Garage/Garten) stehen zwar schon in der "Leistung jetzt"-Kachel
+    // oben und in der Sprechblase im Bild selbst, sollen hier aber trotzdem stehen bleiben (auf
+    // Wunsch) - eigenes <span> nur noch, damit auf dem Handy gezielt ein etwas kleinerer Font
+    // (.chart-sub) greifen kann, ohne den Desktop-Text zu verkleinern.
     document.getElementById('flowSub').innerHTML =
       '<span class="flow-detail">' + (d0 ? escapeHtml(d0) + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + escapeHtml(d1) + ': ' + p1 + ' W' : '') + '  ·  </span>' +
       'Gesamt: ' + (p0 + p1) + ' W' + escapeHtml(weatherFoot);
