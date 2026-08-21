@@ -65,7 +65,9 @@
   .live-dot.stale { background: var(--ink-3); animation: none; }
   @keyframes pulse { 0%,100% { opacity: .9; } 50% { opacity: .25; } }
   .status-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .refresh-btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  /* nowrap, damit der Button nie in "Jetzt\naktualisieren" (2 Zeilen) umbricht - kostet auf dem Handy
+     unnoetig Hoehe in der Kopfzeile. */
+  .refresh-btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
   .refresh-btn:hover { color: var(--ink-1); }
 
   h2.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 20px 0 8px; font-weight: 600; }
@@ -99,6 +101,26 @@
      Auf dem Handy stattdessen ein kleiner vertikaler Abstand zwischen den beiden Zeilen. */
   @media (max-width: 600px) {
     .stat-split { gap: 2px; }
+    /* Siehe Kommentar bei der flowSub-Befuellung: Pro-Anlage-Werte stehen hier schon in der Kachel
+       oben UND im Bild selbst - auf dem Handy ausgeblendet, damit die Unterzeile nicht 3-zeilig wird
+       und das Hausbild unnoetig nach unten schiebt. */
+    .flow-detail { display: none; }
+
+    /* Auf Wunsch weiter verkleinert: beim Oeffnen der App auf dem Handy soll moeglichst das komplette
+       Hausbild ohne Scrollen sichtbar sein. Alles hier betrifft nur Abstaende/Groessen, keine
+       Informationen gehen verloren (bis auf die kleine Sparkline, die ohnehin nur eine verkleinerte
+       Vorschau des Charts weiter unten in "Verlauf heute" ist). */
+    .title-suffix { display: none; }               /* Titel bleibt 1-zeilig: nur "Balkonkraftwerke" */
+    .status-banner { margin: 5px 0 8px; padding: 5px 10px; }
+    h2.section-title { margin: 10px 0 5px; }
+    .chart-card { padding: 10px 14px 6px; }
+    .chart-card .chart-sub { margin-bottom: 6px; }
+    .stat-tile { padding: 8px 10px; min-height: 0; }
+    .stat-spark { display: none; }                  /* nur Vorschau, echtes Chart steht weiter unten */
+    .stat-value { font-size: 18px; }
+    .stat-label { font-size: 10.5px; }
+    .kpi-and-price { margin-bottom: 6px; gap: 8px; }
+    .viz-root { padding-top: 12px; }
   }
   .stat-split span.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   .stat-foot { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
@@ -204,7 +226,7 @@
 
   <div class="topbar">
     <div>
-      <h1>Balkonkraftwerke – Ertragsübersicht</h1>
+      <h1>Balkonkraftwerke<span class="title-suffix"> – Ertragsübersicht</span></h1>
     </div>
     <button class="refresh-btn" id="refreshBtn" type="button">Jetzt aktualisieren</button>
   </div>
@@ -451,8 +473,8 @@
     var stepX = (W - pad * 2) / (values.length - 1);
     function yPos(v) { return H - pad - (v / maxV) * (H - pad * 2); }
     var points = values.map(function (v, i) { return (pad + i * stepX).toFixed(1) + ',' + yPos(v).toFixed(1); }).join(' ');
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:30px;display:block;margin-top:6px;" preserveAspectRatio="none">' +
-      '<polyline points="' + points + '" fill="none" stroke="var(--ink-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    return '<div class="stat-spark"><svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:30px;display:block;margin-top:6px;" preserveAspectRatio="none">' +
+      '<polyline points="' + points + '" fill="none" stroke="var(--ink-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
   }
 
   var lastRows = [];
@@ -784,8 +806,15 @@
         weatherFoot += '  ·  Sonnenuntergang: ' + fmtTime(new Date(weatherData.daily.sunset[0])) + ' Uhr';
       }
     }
-    document.getElementById('flowSub').textContent =
-      (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W' + weatherFoot;
+    // Die Pro-Anlage-Werte (Solar Garage/Garten) stehen bereits identisch in der "Leistung jetzt"-
+    // Kachel oben UND in der grossen Sprechblase im Bild selbst - hier nochmal ausgeschrieben macht
+    // diese Unterzeile auf dem Handy 3-zeilig (seit der Wetter-Ergaenzung dazugekommen ist), was das
+    // Hausbild unnoetig weiter nach unten schiebt. Deshalb steht dieser Teil jetzt in einem eigenen
+    // <span>, das auf dem Handy per CSS ausgeblendet wird (siehe .flow-detail) - am Desktop bleibt
+    // er wie gewohnt sichtbar.
+    document.getElementById('flowSub').innerHTML =
+      '<span class="flow-detail">' + (d0 ? escapeHtml(d0) + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + escapeHtml(d1) + ': ' + p1 + ' W' : '') + '  ·  </span>' +
+      'Gesamt: ' + (p0 + p1) + ' W' + escapeHtml(weatherFoot);
 
     // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
