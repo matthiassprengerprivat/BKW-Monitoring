@@ -875,11 +875,19 @@
       var r = 46;
       var MOON_FILL = '#e7eaf2', MOON_STROKE = '#8f9db3', STAR_FILL = '#c7cfe0';
       var g = el('g', {});
-      g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: MOON_FILL, stroke: MOON_STROKE, 'stroke-width': 5 }));
-      // "Ausschnitt"-Kreis in Himmelfarbe (weiss, wie der Bildhintergrund) erzeugt die Mondsichel.
-      g.appendChild(el('circle', { cx: cx + r * 0.55, cy: cy - r * 0.4, r: r * 0.98, fill: '#ffffff', stroke: 'none' }));
-      [[-78, -55, 5], [-100, 15, 4], [-60, 55, 3.5]].forEach(function (s) {
-        g.appendChild(el('circle', { cx: cx + s[0], cy: cy + s[1], r: s[2], fill: STAR_FILL }));
+      // Echte Mondsichel als EIN zusammenhaengender Pfad (zwei Kreisboegen), nicht mehr per
+      // "weisser Ausschnitt-Kreis"-Trick. Der alte Trick ist bei Nacht sichtbar schiefgelaufen:
+      // er ging davon aus, dass der Himmel dahinter weiss ist (Bildhintergrund) - seit das ganze
+      // Hausbild nachts abgedunkelt wird, sass da stattdessen ein greller weisser Fleck auf
+      // dunklem Grund statt einer Sichel. Diese Version funktioniert unabhaengig vom Hintergrund.
+      var s = r / 9;
+      var xA = r, yA = 0.79 * s, xB = -0.79 * s, yB = -r, r2 = 7 * s;
+      var d = 'M ' + (cx + xA).toFixed(1) + ' ' + (cy + yA).toFixed(1) +
+        ' A ' + r + ' ' + r + ' 0 1 1 ' + (cx + xB).toFixed(1) + ' ' + (cy + yB).toFixed(1) +
+        ' A ' + r2.toFixed(1) + ' ' + r2.toFixed(1) + ' 0 0 0 ' + (cx + xA).toFixed(1) + ' ' + (cy + yA).toFixed(1) + ' Z';
+      g.appendChild(el('path', { d: d, fill: MOON_FILL, stroke: MOON_STROKE, 'stroke-width': 5, 'stroke-linejoin': 'round' }));
+      [[-78, -55, 5], [-100, 15, 4], [-60, 55, 3.5]].forEach(function (st) {
+        g.appendChild(el('circle', { cx: cx + st[0], cy: cy + st[1], r: st[2], fill: STAR_FILL }));
       });
       svg.appendChild(g);
     }
@@ -903,28 +911,29 @@
       svg.appendChild(g);
     }
 
-    // Einfache, flach gezeichnete Wolke aus ein paar ueberlappenden Kreisen + einer Basis - dezent
-    // grau/weiss gehalten, damit sie sich von der farbigen Sonne abhebt.
+    // Wolke als EIN zusammenhaengender Umriss-Pfad statt mehrerer gleich grosser, ueberlappender
+    // Kreise + Basis-Rechteck - die alte Version wirkte durch die gleichfoermigen Kreise/Kanten
+    // eher wie Sofakissen mit Armlehnen als wie eine Wolke. Der neue, handgezeichnete Umriss hat
+    // unterschiedlich grosse, weich verschmelzende Ausbuchtungen und wirkt dadurch wolkiger.
     function drawCloud(cx, cy, scale, opacity) {
       scale = scale || 1;
       opacity = (opacity == null) ? 1 : opacity;
       var CLOUD_FILL = '#e4e7ee', CLOUD_STROKE = '#a9b0c2';
-      var g = el('g', { opacity: opacity });
-      var lobes = [[-42, 8, 27], [-12, -14, 34], [22, -6, 30], [50, 10, 22]];
-      lobes.forEach(function (l) {
-        g.appendChild(el('circle', { cx: cx + l[0] * scale, cy: cy + l[1] * scale, r: l[2] * scale, fill: CLOUD_FILL, stroke: CLOUD_STROKE, 'stroke-width': 3 }));
-      });
-      g.appendChild(el('rect', { x: cx - 56 * scale, y: cy + 4 * scale, width: 112 * scale, height: 28 * scale, rx: 14 * scale, fill: CLOUD_FILL, stroke: CLOUD_STROKE, 'stroke-width': 3 }));
+      var d = 'M -70,14 C -74,-6 -56,-22 -34,-20 C -30,-42 -2,-48 20,-32 C 44,-36 66,-18 60,4' +
+        ' C 78,4 78,26 58,28 L -50,28 C -68,28 -74,20 -70,14 Z';
+      var g = el('g', { opacity: opacity, transform: 'translate(' + cx + ',' + cy + ') scale(' + scale + ')' });
+      g.appendChild(el('path', { d: d, fill: CLOUD_FILL, stroke: CLOUD_STROKE, 'stroke-width': (5 / scale).toFixed(2), 'stroke-linejoin': 'round' }));
       svg.appendChild(g);
     }
 
-    // Ein paar schraege Regentropfen-Striche unterhalb der Wolke.
+    // Ein paar schraege Regentropfen-Striche unterhalb der Wolke (Basislinie der neuen Wolke liegt
+    // bei lokal y=28, also cy + 28*scale, ein kleiner Abstand darunter).
     function drawRaindrops(cx, cy, scale) {
       scale = scale || 1;
       var DROP = '#7a92b8';
       var g = el('g', {});
       [-30, 0, 30].forEach(function (dx) {
-        var x1 = cx + dx * scale, y1 = cy + 42 * scale;
+        var x1 = cx + dx * scale, y1 = cy + 38 * scale;
         var x2 = x1 - 10 * scale, y2 = y1 + 26 * scale;
         g.appendChild(el('line', { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), stroke: DROP, 'stroke-width': 6, 'stroke-linecap': 'round' }));
       });
