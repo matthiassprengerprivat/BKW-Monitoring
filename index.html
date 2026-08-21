@@ -81,6 +81,13 @@
   .stat-label { font-size: 11.5px; color: var(--ink-2); }
   .stat-value { font-size: 20px; font-weight: 600; margin: 2px 0; }
   .stat-split { display: flex; gap: 12px; font-size: 11px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
+  /* Auf schmalen (Handy-)Bildschirmen stehen "Solar Garage: ..." und "Solar Garten: ..." wegen
+     flex-wrap sowieso schon in 2 Zeilen untereinander - der grosse horizontale Abstand (gap: 12px,
+     fuer die Desktop-Anordnung in einer Zeile gedacht) ist dort unnoetig und kostet nur Platz.
+     Auf dem Handy stattdessen ein kleiner vertikaler Abstand zwischen den beiden Zeilen. */
+  @media (max-width: 600px) {
+    .stat-split { gap: 2px; }
+  }
   .stat-split span.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   .stat-foot { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 
