@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Balkonkraftwerke – Live-Dashboard</title>
+<!-- PWA: erlaubt "Zum Home-Bildschirm hinzufuegen" mit eigenem Icon im Vollbild-Modus. -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a1a">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BKW Dashboard">
+<link rel="icon" href="icon-192.png">
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -1310,6 +1318,18 @@
 
   requestLoad();
   setInterval(requestLoad, usingWorkerTick ? REFRESH_MS * 5 : REFRESH_MS);
+
+  // PWA: Service Worker registrieren (siehe sw.js) - macht die Seite "installierbar" (Homescreen-
+  // Icon, Vollbild-Modus) und liefert bei fehlendem Empfang zumindest die letzten bekannten Werte.
+  // Rein additiv/optional: falls das aus irgendeinem Grund fehlschlaegt (z.B. sehr alter Browser),
+  // funktioniert das Dashboard ganz normal weiter, nur eben ohne diesen Zusatznutzen.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (err) {
+        console.warn('Service-Worker-Registrierung fehlgeschlagen (nicht kritisch):', err);
+      });
+    });
+  }
 })();
 </script>
 </body>
