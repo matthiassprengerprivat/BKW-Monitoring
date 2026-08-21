@@ -129,6 +129,15 @@
   .compare-month-row .compare-bar { flex: 1; }
   .compare-month-total { width: 58px; text-align: right; flex-shrink: 0; color: var(--ink-1); font-variant-numeric: tabular-nums; }
 
+  /* Kalender-Heatmap ("Jahresertrag pro Tag", GitHub-Beitraege-Stil). Auf dem Handy ist das Raster
+     oft breiter als der Bildschirm - deshalb eigener, horizontal scrollbarer Wrapper, und die
+     SVG-Breite wird hier NICHT (wie sonst ueberall) auf 100% gezwungen, sondern bleibt in ihrer
+     natuerlichen Pixelgroesse, damit die Kaestchen nicht winzig zusammengequetscht werden. */
+  .cal-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .cal-wrap svg { width: auto; max-width: none; display: inline-block; }
+  .cal-legend { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-2); margin-top: 6px; }
+  .cal-legend .cal-swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; background: var(--ink-1); }
+
   .legend { display: flex; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
   .legend-swatch { width: 16px; height: 2px; border-radius: 2px; background: var(--ink-1); }
@@ -250,6 +259,9 @@
 
     <h2 class="section-title">Wochen-, Monats- &amp; Jahresübersicht</h2>
     <div class="chart-card" id="longTermCard"></div>
+
+    <h2 class="section-title">Kalender-Übersicht</h2>
+    <div class="chart-card" id="calendarCard"></div>
 
   </div>
 
@@ -587,6 +599,7 @@
     renderRecords(records);
     renderComparison(computeComparison(dayStats, devices));
     renderLongTerm(rows, devices, historySpanDays, dayStats);
+    renderCalendarHeatmap(computeCalendarHeatmap(dayStats, records, now));
     renderPriceReactive();
   }
 
@@ -869,10 +882,15 @@
     // Sind noch keine Wetterdaten da (z.B. kurz nach dem Laden, oder Open-Meteo nicht erreichbar),
     // faellt das Icon auf die alte, rein leistungsbasierte Sonne zurueck - genauso wie schon bei der
     // Tag/Nacht-Erkennung oben.
-    var SKY_CX = 1560, SKY_CY = 210;
+    var SKY_CX = 1500, SKY_CY = 230;
+    // Alle Himmel-Icons (Sonne, Mond, Wolken) werden mit diesem Faktor skaliert - auf Wunsch etwas
+    // groesser/praesenter gemacht als urspruenglich. Die Position (SKY_CX/SKY_CY) wurde dabei leicht
+    // nach links/unten verschoben, damit auch die groesste Sonne (bei Rekordleistung) nicht ueber
+    // den rechten/oberen Bildrand hinausragt.
+    var SKY_SCALE = 1.35;
 
     function drawMoon(cx, cy) {
-      var r = 46;
+      var r = 46 * SKY_SCALE;
       var MOON_FILL = '#e7eaf2', MOON_STROKE = '#8f9db3', STAR_FILL = '#c7cfe0';
       var g = el('g', {});
       // Echte Mondsichel als EIN zusammenhaengender Pfad (zwei Kreisboegen), nicht mehr per
@@ -887,14 +905,15 @@
         ' A ' + r2.toFixed(1) + ' ' + r2.toFixed(1) + ' 0 0 0 ' + (cx + xA).toFixed(1) + ' ' + (cy + yA).toFixed(1) + ' Z';
       g.appendChild(el('path', { d: d, fill: MOON_FILL, stroke: MOON_STROKE, 'stroke-width': 5, 'stroke-linejoin': 'round' }));
       [[-78, -55, 5], [-100, 15, 4], [-60, 55, 3.5]].forEach(function (st) {
-        g.appendChild(el('circle', { cx: cx + st[0], cy: cy + st[1], r: st[2], fill: STAR_FILL }));
+        g.appendChild(el('circle', { cx: cx + st[0] * SKY_SCALE, cy: cy + st[1] * SKY_SCALE, r: st[2] * SKY_SCALE, fill: STAR_FILL }));
       });
       svg.appendChild(g);
     }
 
-    // Groessenunterschied zwischen 0% und 100% der Rekordleistung bewusst deutlich (Radius 24-84).
+    // Groessenunterschied zwischen 0% und 100% der Rekordleistung bewusst deutlich (Radius 24-84,
+    // zusaetzlich mit SKY_SCALE multipliziert).
     function drawSun(cx, cy, ratio, scale, opacityBoost) {
-      scale = scale || 1;
+      scale = (scale || 1) * SKY_SCALE;
       var baseR = 24, r = (baseR + 60 * ratio) * scale;
       var opacity = Math.min(1, (0.35 + 0.65 * ratio) + (opacityBoost || 0)).toFixed(2);
       var SUN_FILL = '#ffd166', SUN_STROKE = '#e8a33d';
@@ -916,7 +935,7 @@
     // eher wie Sofakissen mit Armlehnen als wie eine Wolke. Der neue, handgezeichnete Umriss hat
     // unterschiedlich grosse, weich verschmelzende Ausbuchtungen und wirkt dadurch wolkiger.
     function drawCloud(cx, cy, scale, opacity) {
-      scale = scale || 1;
+      scale = (scale || 1) * SKY_SCALE;
       opacity = (opacity == null) ? 1 : opacity;
       var CLOUD_FILL = '#e4e7ee', CLOUD_STROKE = '#a9b0c2';
       var d = 'M -70,14 C -74,-6 -56,-22 -34,-20 C -30,-42 -2,-48 20,-32 C 44,-36 66,-18 60,4' +
@@ -929,7 +948,7 @@
     // Ein paar schraege Regentropfen-Striche unterhalb der Wolke (Basislinie der neuen Wolke liegt
     // bei lokal y=28, also cy + 28*scale, ein kleiner Abstand darunter).
     function drawRaindrops(cx, cy, scale) {
-      scale = scale || 1;
+      scale = (scale || 1) * SKY_SCALE;
       var DROP = '#7a92b8';
       var g = el('g', {});
       [-30, 0, 30].forEach(function (dx) {
@@ -957,8 +976,8 @@
       } else if (cc >= 70) {
         drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
       } else if (cc >= 30) {
-        drawSun(SKY_CX - 26, SKY_CY - 18, Math.max(0.5, sunRatio), 0.85, 0);
-        drawCloud(SKY_CX + 24, SKY_CY + 22, 0.9, 0.95);
+        drawSun(SKY_CX - 26 * SKY_SCALE, SKY_CY - 18 * SKY_SCALE, Math.max(0.5, sunRatio), 0.85, 0);
+        drawCloud(SKY_CX + 24 * SKY_SCALE, SKY_CY + 22 * SKY_SCALE, 0.9, 0.95);
       } else {
         drawSun(SKY_CX, SKY_CY, sunRatio);
       }
@@ -1422,6 +1441,115 @@
       btn.classList.add('active');
       document.getElementById('longTermContent').innerHTML = buildContent(tabs[idx].devicesToShow);
     });
+  }
+
+  // Kalender-Heatmap: Tagesertrag der letzten ca. 12 Monate im GitHub-Beitraege-Kalender-Stil
+  // (eine Spalte pro Woche, eine Zeile pro Wochentag, Faerbung nach erzeugter Tages-kWh). Woche
+  // startet mit Montag (deutsche Konvention). Die letzte Spalte enthaelt immer die aktuelle Woche.
+  function computeCalendarHeatmap(dayStats, records, now) {
+    if (!dayStats.dayKeys.length) return null;
+    var earliestKey = dayStats.dayKeys[0];
+    var todayKey = dayKey(now);
+
+    function mondayOf(d) {
+      var wd = (d.getDay() + 6) % 7; // Montag=0 ... Sonntag=6
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() - wd);
+    }
+    var TOTAL_WEEKS = 53;
+    var endMonday = mondayOf(now);
+    var startMonday = new Date(endMonday.getFullYear(), endMonday.getMonth(), endMonday.getDate() - (TOTAL_WEEKS - 1) * 7);
+
+    // Referenzwert fuer die Faerbung: der bisher ertragreichste Einzeltag (kommt schon aus den
+    // Rekorden - so bleibt die Farbskala stabil und aussagekraeftig, auch wenn der angezeigte
+    // 12-Monats-Ausschnitt selbst gerade keinen besonders starken Tag enthaelt).
+    var maxKwh = (records && records.bestDayKwh) || 0;
+    function bucketFor(kwh) {
+      if (maxKwh <= 0) return kwh > 0 ? 1 : 0;
+      var r = kwh / maxKwh;
+      if (r <= 0) return 0;
+      if (r <= 0.25) return 1;
+      if (r <= 0.5) return 2;
+      if (r <= 0.75) return 3;
+      return 4;
+    }
+
+    var weeks = [];
+    var monthLabels = [];
+    var lastMonth = null;
+    var totalKwhInView = 0, daysInView = 0;
+
+    for (var w = 0; w < TOTAL_WEEKS; w++) {
+      var col = [];
+      for (var d = 0; d < 7; d++) {
+        var date = new Date(startMonday.getFullYear(), startMonday.getMonth(), startMonday.getDate() + w * 7 + d);
+        var key = dayKey(date);
+        var status; // 'future' | 'before' | 'ok'
+        if (key > todayKey) status = 'future';
+        else if (key < earliestKey) status = 'before';
+        else status = 'ok';
+        var kwh = status === 'ok' ? dayStats.totalKwhForDay(key) : 0;
+        if (status === 'ok') { totalKwhInView += kwh; daysInView++; }
+        col.push({ key: key, date: date, status: status, kwh: kwh, bucket: status === 'ok' ? bucketFor(kwh) : -1 });
+      }
+      weeks.push(col);
+      var mondayMonth = col[0].date.getMonth();
+      if (mondayMonth !== lastMonth) {
+        monthLabels.push({ col: w, text: MONTH_NAMES[mondayMonth] });
+        lastMonth = mondayMonth;
+      }
+    }
+
+    return { weeks: weeks, monthLabels: monthLabels, totalWeeks: TOTAL_WEEKS, maxKwh: maxKwh, totalKwhInView: totalKwhInView, daysInView: daysInView };
+  }
+
+  function renderCalendarHeatmap(cal) {
+    var card = document.getElementById('calendarCard');
+    if (!cal) {
+      card.innerHTML = '<div class="building-card">Die Kalender-Übersicht baut sich hier automatisch auf, sobald die ersten Messwerte vorliegen.</div>';
+      return;
+    }
+
+    var CELL = 11, GAP = 3, STEP = CELL + GAP;
+    var LEFT_PAD = 26, TOP_PAD = 18;
+    var W = LEFT_PAD + cal.totalWeeks * STEP;
+    var H = TOP_PAD + 7 * STEP;
+    var OPACITY = [0.12, 0.32, 0.52, 0.74, 0.95];
+    var WEEKDAY_LABELS = { 0: 'Mo', 2: 'Mi', 4: 'Fr' };
+
+    var parts = [];
+    cal.monthLabels.forEach(function (m) {
+      parts.push('<text x="' + (LEFT_PAD + m.col * STEP) + '" y="' + (TOP_PAD - 6) + '" class="axis-label">' + m.text + '</text>');
+    });
+    Object.keys(WEEKDAY_LABELS).forEach(function (rowStr) {
+      var row = +rowStr;
+      parts.push('<text x="0" y="' + (TOP_PAD + row * STEP + CELL - 1) + '" class="axis-label">' + WEEKDAY_LABELS[row] + '</text>');
+    });
+
+    cal.weeks.forEach(function (col, w) {
+      col.forEach(function (cell, d) {
+        var x = LEFT_PAD + w * STEP, y = TOP_PAD + d * STEP;
+        var titleText, rectAttrs;
+        if (cell.status === 'ok') {
+          titleText = fmtDayKey(cell.key) + ': ' + fmtKwh(cell.kwh);
+          rectAttrs = { x: x, y: y, width: CELL, height: CELL, rx: 2, fill: 'var(--ink-1)', 'fill-opacity': OPACITY[cell.bucket] };
+        } else {
+          titleText = fmtDayKey(cell.key) + ': ' + (cell.status === 'future' ? 'in der Zukunft' : 'vor Beginn der Erfassung');
+          rectAttrs = { x: x, y: y, width: CELL, height: CELL, rx: 2, fill: 'none', stroke: 'var(--border)', 'stroke-width': 1 };
+        }
+        var attrStr = Object.keys(rectAttrs).map(function (k) { return k + '="' + rectAttrs[k] + '"'; }).join(' ');
+        parts.push('<rect ' + attrStr + '><title>' + escapeHtml(titleText) + '</title></rect>');
+      });
+    });
+
+    var svgHtml = '<div class="cal-wrap"><svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">' + parts.join('') + '</svg></div>';
+
+    var legendHtml = '<div class="cal-legend"><span>Weniger</span>' +
+      OPACITY.map(function (o) { return '<span class="cal-swatch" style="opacity:' + o + '"></span>'; }).join('') +
+      '<span>Mehr</span></div>';
+
+    card.innerHTML = '<h3>Tagesertrag im Jahresüberblick</h3>' +
+      '<p class="chart-sub">Letzte ' + cal.totalWeeks + ' Wochen, ' + cal.daysInView + ' Tag(e) mit Daten · dunklere Felder = mehr erzeugte kWh an dem Tag (Skala relativ zum bisher besten Tag).</p>' +
+      svgHtml + legendHtml;
   }
 
   function showError(msg) {
