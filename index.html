@@ -87,7 +87,10 @@
   #saveTile .stat-value { font-size: 17px; margin: 1px 0; }
   #saveTile .stat-foot { margin-top: 2px; }
   .stat-label { font-size: 11.5px; color: var(--ink-2); }
-  .stat-value { font-size: 20px; font-weight: 600; margin: 2px 0; }
+  /* white-space: nowrap verhindert, dass bei groesseren Zahlen (mehr Stellen) das "W"/"kWh" auf dem
+     Handy in eine zweite Zeile umbricht - der Wert soll immer als eine zusammenhaengende Einheit
+     erscheinen, notfalls minimal kleiner statt umgebrochen. */
+  .stat-value { font-size: 20px; font-weight: 600; margin: 2px 0; white-space: nowrap; }
   .stat-split { display: flex; gap: 12px; font-size: 11px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
   /* Auf schmalen (Handy-)Bildschirmen stehen "Solar Garage: ..." und "Solar Garten: ..." wegen
      flex-wrap sowieso schon in 2 Zeilen untereinander - der grosse horizontale Abstand (gap: 12px,
@@ -453,7 +456,7 @@
   function loadWeather() {
     if (typeof WEATHER_LAT === 'undefined' || typeof WEATHER_LON === 'undefined') return;
     var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + WEATHER_LAT + '&longitude=' + WEATHER_LON +
-      '&current=cloud_cover&daily=sunrise,sunset,sunshine_duration,cloud_cover_mean&timezone=auto';
+      '&current=cloud_cover,precipitation&daily=sunrise,sunset,sunshine_duration,cloud_cover_mean&timezone=auto';
     fetch(url).then(function (resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
       .then(function (data) { weatherData = data; if (typeof lastRows !== 'undefined' && lastRows.length) render(lastRows); })
       .catch(function (err) { console.warn('Wetterdaten konnten nicht geladen werden (nicht kritisch):', err); });
@@ -774,6 +777,28 @@
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
     svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet' }));
 
+    // Tag/Nacht wird jetzt VOR den restlichen Zeichnungen bestimmt, damit wir bei Nacht direkt im
+    // Anschluss an das Hintergrundbild ein abdunkelndes Overlay einfuegen koennen - alles danach
+    // Gezeichnete (Sprechblasen, Pfeile, Zahlen, Sonne/Mond) liegt ueber diesem Overlay und bleibt
+    // dadurch voll lesbar; nur der Hintergrund (Haus, Himmel, Garten) wirkt nachts erkennbar dunkler.
+    var NIGHT_THRESHOLD_W = 3;
+    var totalNowVal = p0 + p1;
+    var isNight;
+    var sunriseT = null, sunsetT = null;
+    if (weatherData && weatherData.daily && weatherData.daily.sunrise && weatherData.daily.sunset &&
+        weatherData.daily.sunrise[0] && weatherData.daily.sunset[0]) {
+      sunriseT = new Date(weatherData.daily.sunrise[0]);
+      sunsetT = new Date(weatherData.daily.sunset[0]);
+      var nowReal = new Date();
+      isNight = (nowReal < sunriseT || nowReal > sunsetT);
+    } else {
+      // Notfall-Ruecfkfall ohne Wetterdaten: von der aktuellen Gesamtleistung ableiten.
+      isNight = totalNowVal <= NIGHT_THRESHOLD_W;
+    }
+    if (isNight) {
+      svg.appendChild(el('rect', { x: 0, y: 0, width: 1778, height: 1802, fill: '#0b1230', opacity: 0.42 }));
+    }
+
     // Die beiden Anlagen behalten ihre Farbcodierung (rot = Garage, blau = Wandmontage/Garten) -
     // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz, um sie optisch von den beiden
     // Einzelwerten abzuheben.
@@ -833,76 +858,101 @@
     // mit einem kleinen Schwanz hinunter zum Dachfirst.
     speechBubble(760, 25, 520, 190, '955,215 1085,215 1020,268', INK, (p0 + p1) + ' W', 'gerade jetzt insgesamt', 58, 32);
 
-    // Sonne oben rechts im Himmel: rein dekorativ, farbig (warmes Gelb/Orange, einziger Farbtupfer
-    // im sonst schwarz-weissen Bild) und skaliert mit der aktuellen Gesamtleistung im Verhaeltnis
-    // zur bisherigen Rekordleistung (records.maxPower) - je naeher an der Rekordleistung, desto
-    // groesser/kraeftiger die Sonne. Ohne Rekordwert (z.B. ganz am Anfang) faellt sie einfach auf
-    // "aktueller Wert" zurueck. Der Groessenunterschied zwischen 0% und 100% wurde bewusst deutlich
-    // vergroessert (Radius 24 bis 84, statt vorher 34 bis 60).
-    //
-    // Bei sehr niedriger Gesamtleistung (keine echte Produktion - typischerweise nachts, vor
-    // Sonnenaufgang oder nach Sonnenuntergang) wird statt der Sonne ein Mond mit ein paar Sternen
-    // gezeigt - ganz ohne zusaetzliche Abfrage einer echten Sonnenaufgangs-/Sonnenuntergangszeit,
-    // einfach direkt an der tatsaechlichen Produktion festgemacht.
-    //
-    // Schwellwert bewusst nicht bei exakt 0 W, sondern bei NIGHT_THRESHOLD_W: in der Praxis zeigen
-    // die Steckdosen auch nachts eine kleine "Rest"-Wattzahl (Standby-Verbrauch der Messtechnik
-    // selbst, keine echte Solarproduktion) - beobachtet am 20.8.2026 gegen 21 Uhr bei 1 W, auf
-    // Wunsch am 21.8. auf 3 W angehoben (etwas Puffer nach oben). Das ist jetzt aber nur noch der
-    // NOTFALL-Ruecfkfall: seit es echte Sonnenauf-/-untergangszeiten via Wetter-API gibt, entscheidet
-    // primaer die tatsaechliche Uhrzeit, ob es Tag oder Nacht ist - so wird an einem bewoelkten Tag
-    // mit sehr geringer (aber echter) Produktion trotzdem tagsueber die (dann kleine/blasse) Sonne
-    // gezeigt statt faelschlich der Mond. Nur wenn die Wetterdaten (noch) nicht verfuegbar sind
-    // (z.B. kurz nach dem Laden, oder Open-Meteo nicht erreichbar), wird auf die alte,
-    // wattzahl-basierte Schaetzung zurueckgefallen.
-    var NIGHT_THRESHOLD_W = 3;
-    var totalNowVal = p0 + p1;
+    // Himmel-Icon oben rechts: rein dekorativ, aber jetzt mit mehreren Wetterzustaenden statt nur
+    // Sonne/Mond. Nachts (isNight, oben bereits bestimmt) immer der Mond. Tagsueber entscheidet die
+    // aktuelle Bewoelkung (weatherData.current.cloud_cover, in %) und der aktuelle Niederschlag
+    // (weatherData.current.precipitation, in mm) welches Icon gezeigt wird:
+    //   Niederschlag > 0        -> Regenwolke
+    //   Bewoelkung >= 70 %      -> durchgehend bewoelkt (reine Wolke, keine Sonne sichtbar)
+    //   Bewoelkung 30-70 %      -> "Sonne hinter Wolke" (teilweise bewoelkt)
+    //   Bewoelkung < 30 %       -> klare Sonne (wie bisher, skaliert mit der Leistung)
+    // Sind noch keine Wetterdaten da (z.B. kurz nach dem Laden, oder Open-Meteo nicht erreichbar),
+    // faellt das Icon auf die alte, rein leistungsbasierte Sonne zurueck - genauso wie schon bei der
+    // Tag/Nacht-Erkennung oben.
     var SKY_CX = 1560, SKY_CY = 210;
 
-    var isNight;
-    var sunriseT = null, sunsetT = null;
-    if (weatherData && weatherData.daily && weatherData.daily.sunrise && weatherData.daily.sunset &&
-        weatherData.daily.sunrise[0] && weatherData.daily.sunset[0]) {
-      sunriseT = new Date(weatherData.daily.sunrise[0]);
-      sunsetT = new Date(weatherData.daily.sunset[0]);
-      var nowReal = new Date();
-      isNight = (nowReal < sunriseT || nowReal > sunsetT);
-    } else {
-      isNight = totalNowVal <= NIGHT_THRESHOLD_W;
+    function drawMoon(cx, cy) {
+      var r = 46;
+      var MOON_FILL = '#e7eaf2', MOON_STROKE = '#8f9db3', STAR_FILL = '#c7cfe0';
+      var g = el('g', {});
+      g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: MOON_FILL, stroke: MOON_STROKE, 'stroke-width': 5 }));
+      // "Ausschnitt"-Kreis in Himmelfarbe (weiss, wie der Bildhintergrund) erzeugt die Mondsichel.
+      g.appendChild(el('circle', { cx: cx + r * 0.55, cy: cy - r * 0.4, r: r * 0.98, fill: '#ffffff', stroke: 'none' }));
+      [[-78, -55, 5], [-100, 15, 4], [-60, 55, 3.5]].forEach(function (s) {
+        g.appendChild(el('circle', { cx: cx + s[0], cy: cy + s[1], r: s[2], fill: STAR_FILL }));
+      });
+      svg.appendChild(g);
+    }
+
+    // Groessenunterschied zwischen 0% und 100% der Rekordleistung bewusst deutlich (Radius 24-84).
+    function drawSun(cx, cy, ratio, scale, opacityBoost) {
+      scale = scale || 1;
+      var baseR = 24, r = (baseR + 60 * ratio) * scale;
+      var opacity = Math.min(1, (0.35 + 0.65 * ratio) + (opacityBoost || 0)).toFixed(2);
+      var SUN_FILL = '#ffd166', SUN_STROKE = '#e8a33d';
+      var g = el('g', { opacity: opacity });
+      g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: SUN_FILL, stroke: SUN_STROKE, 'stroke-width': 5 }));
+      var rayCount = 8;
+      for (var i = 0; i < rayCount; i++) {
+        var angle = (Math.PI * 2 / rayCount) * i;
+        var innerR = r + 14, outerR = innerR + (26 + 20 * ratio) * scale;
+        var x1 = cx + Math.cos(angle) * innerR, y1 = cy + Math.sin(angle) * innerR;
+        var x2 = cx + Math.cos(angle) * outerR, y2 = cy + Math.sin(angle) * outerR;
+        g.appendChild(el('line', { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), stroke: SUN_STROKE, 'stroke-width': 5, 'stroke-linecap': 'round' }));
+      }
+      svg.appendChild(g);
+    }
+
+    // Einfache, flach gezeichnete Wolke aus ein paar ueberlappenden Kreisen + einer Basis - dezent
+    // grau/weiss gehalten, damit sie sich von der farbigen Sonne abhebt.
+    function drawCloud(cx, cy, scale, opacity) {
+      scale = scale || 1;
+      opacity = (opacity == null) ? 1 : opacity;
+      var CLOUD_FILL = '#e4e7ee', CLOUD_STROKE = '#a9b0c2';
+      var g = el('g', { opacity: opacity });
+      var lobes = [[-42, 8, 27], [-12, -14, 34], [22, -6, 30], [50, 10, 22]];
+      lobes.forEach(function (l) {
+        g.appendChild(el('circle', { cx: cx + l[0] * scale, cy: cy + l[1] * scale, r: l[2] * scale, fill: CLOUD_FILL, stroke: CLOUD_STROKE, 'stroke-width': 3 }));
+      });
+      g.appendChild(el('rect', { x: cx - 56 * scale, y: cy + 4 * scale, width: 112 * scale, height: 28 * scale, rx: 14 * scale, fill: CLOUD_FILL, stroke: CLOUD_STROKE, 'stroke-width': 3 }));
+      svg.appendChild(g);
+    }
+
+    // Ein paar schraege Regentropfen-Striche unterhalb der Wolke.
+    function drawRaindrops(cx, cy, scale) {
+      scale = scale || 1;
+      var DROP = '#7a92b8';
+      var g = el('g', {});
+      [-30, 0, 30].forEach(function (dx) {
+        var x1 = cx + dx * scale, y1 = cy + 42 * scale;
+        var x2 = x1 - 10 * scale, y2 = y1 + 26 * scale;
+        g.appendChild(el('line', { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), stroke: DROP, 'stroke-width': 6, 'stroke-linecap': 'round' }));
+      });
+      svg.appendChild(g);
     }
 
     if (isNight) {
-      (function drawMoon(cx, cy) {
-        var r = 46;
-        var MOON_FILL = '#e7eaf2', MOON_STROKE = '#8f9db3', STAR_FILL = '#c7cfe0';
-        var g = el('g', {});
-        g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: MOON_FILL, stroke: MOON_STROKE, 'stroke-width': 5 }));
-        // "Ausschnitt"-Kreis in Himmelfarbe (weiss, wie der Bildhintergrund) erzeugt die Mondsichel.
-        g.appendChild(el('circle', { cx: cx + r * 0.55, cy: cy - r * 0.4, r: r * 0.98, fill: '#ffffff', stroke: 'none' }));
-        [[-78, -55, 5], [-100, 15, 4], [-60, 55, 3.5]].forEach(function (s) {
-          g.appendChild(el('circle', { cx: cx + s[0], cy: cy + s[1], r: s[2], fill: STAR_FILL }));
-        });
-        svg.appendChild(g);
-      })(SKY_CX, SKY_CY);
+      drawMoon(SKY_CX, SKY_CY);
     } else {
       var maxEverPower = (records && records.maxPower) ? records.maxPower : totalNowVal;
       var sunRatio = maxEverPower > 0 ? Math.max(0, Math.min(1, totalNowVal / maxEverPower)) : 0;
-      (function drawSun(cx, cy, ratio) {
-        var baseR = 24, r = baseR + 60 * ratio;
-        var opacity = (0.35 + 0.65 * ratio).toFixed(2);
-        var SUN_FILL = '#ffd166', SUN_STROKE = '#e8a33d';
-        var g = el('g', { opacity: opacity });
-        g.appendChild(el('circle', { cx: cx, cy: cy, r: r, fill: SUN_FILL, stroke: SUN_STROKE, 'stroke-width': 5 }));
-        var rayCount = 8;
-        for (var i = 0; i < rayCount; i++) {
-          var angle = (Math.PI * 2 / rayCount) * i;
-          var innerR = r + 14, outerR = innerR + 26 + 20 * ratio;
-          var x1 = cx + Math.cos(angle) * innerR, y1 = cy + Math.sin(angle) * innerR;
-          var x2 = cx + Math.cos(angle) * outerR, y2 = cy + Math.sin(angle) * outerR;
-          g.appendChild(el('line', { x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1), stroke: SUN_STROKE, 'stroke-width': 5, 'stroke-linecap': 'round' }));
-        }
-        svg.appendChild(g);
-      })(SKY_CX, SKY_CY, sunRatio);
+      var cc = (weatherData && weatherData.current && typeof weatherData.current.cloud_cover === 'number') ? weatherData.current.cloud_cover : null;
+      var precip = (weatherData && weatherData.current && typeof weatherData.current.precipitation === 'number') ? weatherData.current.precipitation : 0;
+
+      if (cc === null) {
+        // Keine Wetterdaten (noch) verfuegbar -> alte, rein leistungsbasierte Sonne.
+        drawSun(SKY_CX, SKY_CY, sunRatio);
+      } else if (precip > 0) {
+        drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
+        drawRaindrops(SKY_CX, SKY_CY, 1.15);
+      } else if (cc >= 70) {
+        drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
+      } else if (cc >= 30) {
+        drawSun(SKY_CX - 26, SKY_CY - 18, Math.max(0.5, sunRatio), 0.85, 0);
+        drawCloud(SKY_CX + 24, SKY_CY + 22, 0.9, 0.95);
+      } else {
+        drawSun(SKY_CX, SKY_CY, sunRatio);
+      }
     }
   }
 
