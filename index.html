@@ -26,6 +26,7 @@
     --page:       #f7f7f6;
     --ink-1:      #111111;
     --ink-2:      #8a8a8a;
+    --ink-2b:     #5c5c5a;
     --ink-3:      #b8b8b4;
     --gridline:   #e7e6e2;
     --baseline:   #c9c8c3;
@@ -38,7 +39,7 @@
   }
   :root[data-theme="dark"] .viz-root {
     --surface-1: #171717; --page: #0c0c0c;
-    --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-3: #6c6c68;
+    --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-2b: #6e6e6b; --ink-3: #6c6c68;
     --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
     --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
     --total-line: #e8e8e4;
@@ -47,7 +48,7 @@
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) .viz-root {
       --surface-1: #171717; --page: #0c0c0c;
-      --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-3: #6c6c68;
+      --ink-1: #f2f2f0; --ink-2: #9a9a9a; --ink-2b: #6e6e6b; --ink-3: #6c6c68;
       --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
       --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
       --total-line: #e8e8e4;
@@ -973,9 +974,15 @@
       } else if (precip > 0) {
         drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
         drawRaindrops(SKY_CX, SKY_CY, 1.15);
-      } else if (cc >= 70) {
+      } else if (cc >= 70 && sunRatio <= 0.12) {
         drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
-      } else if (cc >= 30) {
+      } else if (cc >= 70 || cc >= 30) {
+        // Bei cc >= 70 landen wir nur dann hier, wenn trotz der laut Open-Meteo hohen Bewoelkung
+        // gerade ein spuerbarer Teil der bisherigen Rekordleistung erzeugt wird (sunRatio > 0.12) -
+        // ein Hinweis auf aufgerissene/durchbrochene Wolken, durch die tatsaechlich Sonne durchkommt,
+        // auch wenn das (grobmaschige, stundenweise interpolierte) Wettermodell fuer die Region
+        // insgesamt noch hohe Bewoelkung meldet. Dann zeigen wir "Sonne hinter Wolke" statt der
+        // komplett sonnenlosen Wolke - naeher an der Realitaet vor dem Fenster.
         drawSun(SKY_CX - 26 * SKY_SCALE, SKY_CY - 18 * SKY_SCALE, Math.max(0.5, sunRatio), 0.85, 0);
         drawCloud(SKY_CX + 24 * SKY_SCALE, SKY_CY + 22 * SKY_SCALE, 0.9, 0.95);
       } else {
@@ -1211,7 +1218,10 @@
     // sich nicht wie das Leitungsschema anfuehlen, sondern eher wie die Linien in "Leistung ueber
     // den Tag" (die auch schon Ink-Farbtoene statt rot/blau nutzen). Fest an den Namen gebunden
     // (nicht an die Log-Reihenfolge), damit Garage/Garten hier immer gleich eingefaerbt sind.
-    var RED = 'var(--ink-1)', BLUE = 'var(--ink-2)';
+    // Garten nutzt eine eigene, bewusst dunklere Graustufe (--ink-2b) statt des normalen --ink-2 -
+    // das normale --ink-2 (Sekundaertextfarbe im ganzen Dashboard) wirkte hier neben dem schwarzen
+    // Garage-Ton zu blass/zu aehnlich.
+    var RED = 'var(--ink-1)', BLUE = 'var(--ink-2b)';
     var total = cmp.totalGarage + cmp.totalGarten;
     var pctGarage = total > 0 ? Math.round((cmp.totalGarage / total) * 100) : 50;
     var pctGarten = 100 - pctGarage;
@@ -1548,7 +1558,7 @@
       '<span>Mehr</span></div>';
 
     card.innerHTML = '<h3>Tagesertrag im Jahresüberblick</h3>' +
-      '<p class="chart-sub">Letzte ' + cal.totalWeeks + ' Wochen, ' + cal.daysInView + ' Tag(e) mit Daten · dunklere Felder = mehr erzeugte kWh an dem Tag (Skala relativ zum bisher besten Tag).</p>' +
+      '<p class="chart-sub">Letzte ' + cal.totalWeeks + ' Wochen, ' + cal.daysInView + ' Tag(e) mit Daten · je kräftiger eingefärbt, desto mehr kWh an dem Tag erzeugt (Skala relativ zum bisher besten Tag, siehe Legende unten).</p>' +
       svgHtml + legendHtml;
   }
 
