@@ -71,6 +71,13 @@
      damit sie nicht versehentlich das display:contents von .kpi-row erbt. */
   .records-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; min-height: 76px; display: flex; flex-direction: column; justify-content: space-between; }
+  /* Kompaktere Variante fuer "Ersparnis heute" (#saveTile) - auf Wunsch verkleinert, damit auf dem
+     Handy mehr vom Hausbild ohne Scrollen sichtbar bleibt. Nur diese eine Kachel betroffen, "Leistung
+     jetzt" und "Ertrag heute" bleiben in der normalen Groesse. */
+  #saveTile { min-height: 56px; padding: 8px 11px; }
+  #saveTile .stat-label { font-size: 11px; }
+  #saveTile .stat-value { font-size: 17px; margin: 1px 0; }
+  #saveTile .stat-foot { margin-top: 2px; }
   .stat-label { font-size: 11.5px; color: var(--ink-2); }
   .stat-value { font-size: 20px; font-weight: 600; margin: 2px 0; }
   .stat-split { display: flex; gap: 12px; font-size: 11px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
@@ -82,7 +89,9 @@
      Kacheln direkt als Gitterelemente dieses Rasters zaehlen, obwohl kpiRow bei jedem Refresh
      komplett neu befuellt wird - die Preis-Box bleibt dabei unangetastet und behaelt ihren Wert. */
   .kpi-and-price { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
-  .price-box { display: flex; flex-direction: column; justify-content: center; gap: 6px; font-size: 12px; color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; }
+  /* Ebenfalls verkleinert (siehe #saveTile oben) - beide teilen sich eine Grid-Zeile, daher muessen
+     beide kleiner werden, damit die Zeile insgesamt niedriger wird. */
+  .price-box { display: flex; flex-direction: column; justify-content: center; gap: 4px; font-size: 11px; color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 8px 11px; }
   .price-input-row { display: flex; align-items: center; gap: 6px; }
   .price-input-row input { width: 74px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 
@@ -602,7 +611,7 @@
     // 2025 nur leicht gesunken") - jede selbst erzeugte kWh spart diese Menge an Netzstrom-CO2 ein.
     var CO2_KG_PER_KWH = 0.344;
     var co2SavedKg = todayTotal * CO2_KG_PER_KWH;
-    var co2Foot = 'entspricht ' + co2SavedKg.toFixed(1).replace('.', ',') + ' kg CO₂ eingespart';
+    var co2Foot = 'entspricht ' + co2SavedKg.toFixed(1).replace('.', ',') + ' kg CO₂';
     var priceTile = tile('Ersparnis heute', '0,00 €', '', co2Foot);
     priceTile.id = 'saveTile';
     kpiRow.appendChild(priceTile);
@@ -783,11 +792,12 @@
     //
     // Schwellwert bewusst nicht bei exakt 0 W, sondern bei NIGHT_THRESHOLD_W: in der Praxis zeigen
     // die Steckdosen auch nachts eine kleine "Rest"-Wattzahl (Standby-Verbrauch der Messtechnik
-    // selbst, keine echte Solarproduktion) - beobachtet am 20.8.2026 gegen 21 Uhr bei 1 W. Alles bis
-    // zu diesem Wert gilt also als "Nacht". Falls sich bei Regen/Bewoelkung am Tag zeigt, dass auch
-    // echte (wenn auch sehr geringe) Solarproduktion darunter faellt und faelschlich als Mond
-    // angezeigt wird, muesste der Wert wieder gesenkt werden.
-    var NIGHT_THRESHOLD_W = 1;
+    // selbst, keine echte Solarproduktion) - beobachtet am 20.8.2026 gegen 21 Uhr bei 1 W, auf
+    // Wunsch am 21.8. auf 3 W angehoben (etwas Puffer nach oben). Alles bis zu diesem Wert gilt also
+    // als "Nacht". Falls sich bei Regen/Bewoelkung am Tag zeigt, dass auch echte (wenn auch sehr
+    // geringe) Solarproduktion darunter faellt und faelschlich als Mond angezeigt wird, muesste der
+    // Wert wieder gesenkt werden.
+    var NIGHT_THRESHOLD_W = 3;
     var totalNowVal = p0 + p1;
     var SKY_CX = 1560, SKY_CY = 210;
 
