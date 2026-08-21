@@ -1090,7 +1090,11 @@
       card.innerHTML = '<div class="building-card">Der Vergleich baut sich hier automatisch auf, sobald ein paar Tage Daten von beiden Anlagen vorliegen.</div>';
       return;
     }
-    var RED = '#8a1f1f', BLUE = '#1f4e79';
+    // Bewusst schwarz/weiss/grau statt rot/blau - anders als beim Hausbild soll dieser Vergleich
+    // sich nicht wie das Leitungsschema anfuehlen, sondern eher wie die Linien in "Leistung ueber
+    // den Tag" (die auch schon Ink-Farbtoene statt rot/blau nutzen). Fest an den Namen gebunden
+    // (nicht an die Log-Reihenfolge), damit Garage/Garten hier immer gleich eingefaerbt sind.
+    var RED = 'var(--ink-1)', BLUE = 'var(--ink-2)';
     var total = cmp.totalGarage + cmp.totalGarten;
     var pctGarage = total > 0 ? Math.round((cmp.totalGarage / total) * 100) : 50;
     var pctGarten = 100 - pctGarage;
