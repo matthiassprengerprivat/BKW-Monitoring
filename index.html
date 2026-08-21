@@ -810,9 +810,12 @@
     // Die Pro-Anlage-Werte (Solar Garage/Garten) stehen zwar schon in der "Leistung jetzt"-Kachel
     // oben und in der Sprechblase im Bild selbst, sollen hier aber trotzdem stehen bleiben (auf
     // Wunsch) - eigenes <span> nur noch, damit auf dem Handy gezielt ein etwas kleinerer Font
-    // (.chart-sub) greifen kann, ohne den Desktop-Text zu verkleinern.
+    // (.chart-sub) greifen kann, ohne den Desktop-Text zu verkleinern. Fester Zeilenumbruch (<br>)
+    // vor "Gesamt", statt es einfach an die Pro-Anlage-Werte anzuhaengen und dem Flow-Umbruch zu
+    // ueberlassen - so steht "Gesamt" (und die Wetter-Infos dahinter) immer verlaesslich in der
+    // zweiten Zeile, unabhaengig von der Bildschirmbreite.
     document.getElementById('flowSub').innerHTML =
-      '<span class="flow-detail">' + (d0 ? escapeHtml(d0) + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + escapeHtml(d1) + ': ' + p1 + ' W' : '') + '  ·  </span>' +
+      '<span class="flow-detail">' + (d0 ? escapeHtml(d0) + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + escapeHtml(d1) + ': ' + p1 + ' W' : '') + '</span><br>' +
       'Gesamt: ' + (p0 + p1) + ' W' + escapeHtml(weatherFoot);
 
     // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
