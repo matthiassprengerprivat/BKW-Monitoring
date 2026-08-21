@@ -442,6 +442,23 @@
   var lastRows = [];
   var histByDevice = {}; // Geraet -> { Datum -> kWh }, aus den Meross-App-Exporten in HISTORICAL_FILES
 
+  // Wetter-Kontext (Open-Meteo, kostenlos, kein Key noetig): liefert echten Sonnenauf-/-untergang
+  // (fuer eine verlaessliche Tag/Nacht-Erkennung statt nur ueber die Wattzahl zu raten) und
+  // Bewoelkung/Sonnenscheindauer als Zusatzinfo. Wird unabhaengig vom 1-Minuten-Datentakt nur alle
+  // 30 Minuten neu geholt (Wetter aendert sich nicht minuetlich, und Open-Meteo muss nicht unnoetig
+  // oft angefragt werden). Schlaegt die Abfrage fehl (z.B. kein Internet, Open-Meteo down), bleibt
+  // weatherData einfach null/veraltet und der Code faellt automatisch auf die alte, rein
+  // wattzahl-basierte Tag/Nacht-Erkennung zurueck (siehe renderHouseFlow) - nie hart abhaengig davon.
+  var weatherData = null;
+  function loadWeather() {
+    if (typeof WEATHER_LAT === 'undefined' || typeof WEATHER_LON === 'undefined') return;
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + WEATHER_LAT + '&longitude=' + WEATHER_LON +
+      '&current=cloud_cover&daily=sunrise,sunset,sunshine_duration,cloud_cover_mean&timezone=auto';
+    fetch(url).then(function (resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
+      .then(function (data) { weatherData = data; if (typeof lastRows !== 'undefined' && lastRows.length) render(lastRows); })
+      .catch(function (err) { console.warn('Wetterdaten konnten nicht geladen werden (nicht kritisch):', err); });
+  }
+
   function dayOfYear(d) {
     var start = new Date(d.getFullYear(), 0, 1);
     return Math.floor((d - start) / 86400000) + 1;
@@ -743,8 +760,15 @@
     if (!d0) { d0 = devices[0]; d1 = devices[1]; } // Fallback, falls kein Geraet "Garage" im Namen hat
     var p0 = d0 ? Math.round(latestByDevice[d0].power) : 0;
     var p1 = d1 ? Math.round(latestByDevice[d1].power) : 0;
+    var weatherFoot = '';
+    if (weatherData && weatherData.current && typeof weatherData.current.cloud_cover === 'number') {
+      weatherFoot = '  ·  Bewölkung: ' + Math.round(weatherData.current.cloud_cover) + ' %';
+      if (weatherData.daily && weatherData.daily.sunset && weatherData.daily.sunset[0]) {
+        weatherFoot += '  ·  Sonnenuntergang: ' + fmtTime(new Date(weatherData.daily.sunset[0])) + ' Uhr';
+      }
+    }
     document.getElementById('flowSub').textContent =
-      (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W';
+      (d0 ? d0 + ': ' + p0 + ' W' : '') + (d1 ? '  ·  ' + d1 + ': ' + p1 + ' W' : '') + '  ·  Gesamt: ' + (p0 + p1) + ' W' + weatherFoot;
 
     // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
@@ -824,15 +848,30 @@
     // Schwellwert bewusst nicht bei exakt 0 W, sondern bei NIGHT_THRESHOLD_W: in der Praxis zeigen
     // die Steckdosen auch nachts eine kleine "Rest"-Wattzahl (Standby-Verbrauch der Messtechnik
     // selbst, keine echte Solarproduktion) - beobachtet am 20.8.2026 gegen 21 Uhr bei 1 W, auf
-    // Wunsch am 21.8. auf 3 W angehoben (etwas Puffer nach oben). Alles bis zu diesem Wert gilt also
-    // als "Nacht". Falls sich bei Regen/Bewoelkung am Tag zeigt, dass auch echte (wenn auch sehr
-    // geringe) Solarproduktion darunter faellt und faelschlich als Mond angezeigt wird, muesste der
-    // Wert wieder gesenkt werden.
+    // Wunsch am 21.8. auf 3 W angehoben (etwas Puffer nach oben). Das ist jetzt aber nur noch der
+    // NOTFALL-Ruecfkfall: seit es echte Sonnenauf-/-untergangszeiten via Wetter-API gibt, entscheidet
+    // primaer die tatsaechliche Uhrzeit, ob es Tag oder Nacht ist - so wird an einem bewoelkten Tag
+    // mit sehr geringer (aber echter) Produktion trotzdem tagsueber die (dann kleine/blasse) Sonne
+    // gezeigt statt faelschlich der Mond. Nur wenn die Wetterdaten (noch) nicht verfuegbar sind
+    // (z.B. kurz nach dem Laden, oder Open-Meteo nicht erreichbar), wird auf die alte,
+    // wattzahl-basierte Schaetzung zurueckgefallen.
     var NIGHT_THRESHOLD_W = 3;
     var totalNowVal = p0 + p1;
     var SKY_CX = 1560, SKY_CY = 210;
 
-    if (totalNowVal <= NIGHT_THRESHOLD_W) {
+    var isNight;
+    var sunriseT = null, sunsetT = null;
+    if (weatherData && weatherData.daily && weatherData.daily.sunrise && weatherData.daily.sunset &&
+        weatherData.daily.sunrise[0] && weatherData.daily.sunset[0]) {
+      sunriseT = new Date(weatherData.daily.sunrise[0]);
+      sunsetT = new Date(weatherData.daily.sunset[0]);
+      var nowReal = new Date();
+      isNight = (nowReal < sunriseT || nowReal > sunsetT);
+    } else {
+      isNight = totalNowVal <= NIGHT_THRESHOLD_W;
+    }
+
+    if (isNight) {
       (function drawMoon(cx, cy) {
         var r = 46;
         var MOON_FILL = '#e7eaf2', MOON_STROKE = '#8f9db3', STAR_FILL = '#c7cfe0';
@@ -1416,6 +1455,11 @@
 
   requestLoad();
   setInterval(requestLoad, usingWorkerTick ? REFRESH_MS * 5 : REFRESH_MS);
+
+  // Wetter-Kontext (siehe loadWeather oben): einmal beim Start, danach nur alle 30 Minuten -
+  // deutlich seltener als der 1-Minuten-Datentakt, da Wetter sich nicht minuetlich aendert.
+  loadWeather();
+  setInterval(loadWeather, 30 * 60 * 1000);
 
   // PWA: Service Worker registrieren (siehe sw.js) - macht die Seite "installierbar" (Homescreen-
   // Icon, Vollbild-Modus) und liefert bei fehlendem Empfang zumindest die letzten bekannten Werte.
