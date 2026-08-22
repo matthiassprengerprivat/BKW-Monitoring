@@ -928,13 +928,14 @@
     speechBubble(760, 25, 520, 190, '955,215 1085,215 1020,268', INK, (p0 + p1) + ' W', 'gerade jetzt insgesamt', 58, 32);
 
     // Himmel-Icon oben rechts: rein dekorativ, aber jetzt mit mehreren Wetterzustaenden statt nur
-    // Sonne/Mond. Nachts (isNight, oben bereits bestimmt) immer der Mond. Tagsueber entscheidet die
-    // aktuelle Bewoelkung (weatherData.current.cloud_cover, in %) und der aktuelle Niederschlag
-    // (weatherData.current.precipitation, in mm) welches Icon gezeigt wird:
-    //   Niederschlag > 0        -> Regenwolke
-    //   Bewoelkung >= 70 %      -> durchgehend bewoelkt (reine Wolke, keine Sonne sichtbar)
-    //   Bewoelkung 30-70 %      -> "Sonne hinter Wolke" (teilweise bewoelkt)
-    //   Bewoelkung < 30 %       -> klare Sonne (wie bisher, skaliert mit der Leistung)
+    // Sonne/Mond. Nachts (isNight, oben bereits bestimmt) immer der Mond. Tagsueber entscheidet eine
+    // Kombination aus der aktuellen Bewoelkung (weatherData.current.cloud_cover, in %), Niederschlag/
+    // Wettercode und - wo aussagekraeftig - der eigenen Erzeugung als Gegenprobe, welches Icon gezeigt
+    // wird (genaue Schwellen siehe isRaining/looksFullyOvercast weiter unten):
+    //   Regen-Signal + hohe Bewoelkung (+ bei Tagesmitte: niedrige Erzeugung)  -> Regenwolke
+    //   Sehr hohe/hohe Bewoelkung (Schwelle je nach Tageszeit, s.u.)           -> durchgehend bewoelkt
+    //   Bewoelkung 30-70 %                                                     -> "Sonne hinter Wolke"
+    //   Bewoelkung < 30 %                                                      -> klare Sonne
     // Sind noch keine Wetterdaten da (z.B. kurz nach dem Laden, oder Open-Meteo nicht erreichbar),
     // faellt das Icon auf die alte, rein leistungsbasierte Sonne zurueck - genauso wie schon bei der
     // Tag/Nacht-Erkennung oben.
@@ -1022,20 +1023,41 @@
       var sunRatio = maxEverPower > 0 ? Math.max(0, Math.min(1, totalNowVal / maxEverPower)) : 0;
       var cc = (weatherData && weatherData.current && typeof weatherData.current.cloud_cover === 'number') ? weatherData.current.cloud_cover : null;
       var precip = (weatherData && weatherData.current && typeof weatherData.current.precipitation === 'number') ? weatherData.current.precipitation : 0;
+
+      // Wichtige Einschraenkung (nach Rueckfrage vom 23.8., "wenig Wolken + Sonne noch sichtbar am
+      // Abend, Dashboard zeigt trotzdem nur dunkle Wolke ohne Sonne"): sunRatio (Erzeugung jetzt im
+      // Vergleich zum bisherigen Tagesrekord) ist NUR in der Mitte des Tages ein verlaessliches Signal
+      // dafuer, ob es wirklich bewoelkt ist. Am fruehen Morgen und spaeten Abend ist die Erzeugung
+      // wegen des flachen Sonnenstands ohnehin niedrig - unabhaengig davon, ob der Himmel klar oder
+      // bewoelkt ist. sunRatio wuerde dort also IMMER "wenig Sonne" andeuten und faelschlich die volle,
+      // sonnenlose Wolke ausloesen, selbst wenn kaum Wolken da sind. Deshalb: ein Sonnenstand-Gewicht
+      // (elevWeight, 0 = Sonnenauf-/-untergang, 1 = Sonnenmittag, angenaehert per Sinus zwischen
+      // Sonnenauf- und -untergang) bestimmt, wie stark wir der Erzeugung als Gegenprobe vertrauen.
+      var elevWeight = 1; // Default ohne Sonnenauf-/-untergangszeiten: wie bisher voll vertrauen.
+      if (sunriseT && sunsetT && sunsetT > sunriseT) {
+        var dayFrac = (nowReal.getTime() - sunriseT.getTime()) / (sunsetT.getTime() - sunriseT.getTime());
+        if (dayFrac >= 0 && dayFrac <= 1) elevWeight = Math.sin(Math.PI * dayFrac);
+      }
+      var nearDuskOrDawn = elevWeight < 0.5;
+
       // Zweites Signal neben der reinen Niederschlagsmenge: der von Open-Meteo diagnostizierte
       // Wettercode. Hilft, wenn die Modell-Niederschlagsmenge fuer das Gitterfeld nur knapp bei/über
       // 0 liegt, der Wettercode selbst aber eindeutig Regen/Schauer/Gewitter anzeigt (siehe Kommentar
       // bei loadWeather oben). Schwelle 0.1mm statt >0, damit reines Rauschen/Rundung im Modell nicht
       // schon als Regen zaehlt.
       var rainSignal = precip > 0.1 || (weatherData && weatherData.current && weatherCodeMeansRain(weatherData.current.weather_code));
-      // Wichtiger Sanity-Check (nach Rueckfrage vom 23.8., "Regenwolke trotz voller Sonne + guter
-      // Erzeugung"): ein Regen-Signal vom Modell allein reicht NICHT fuer das Regen-Icon - das Modell
-      // bezieht sich auf ein grobes Gitterfeld und kann z.B. eine leichte Regenwahrscheinlichkeit fuer
-      // die Region melden, obwohl vor dem eigenen Fenster gerade die Sonne scheint. Die eigene, gerade
-      // erzeugte Leistung ist das zuverlaessigste hyper-lokale Signal, das wir haben: nur wenn dazu
-      // auch noch die Bewoelkung hoch UND die Erzeugung im Vergleich zum bisherigen Rekord niedrig ist,
-      // zeigen wir das volle "es regnet"-Icon. Sonst bestenfalls "Sonne hinter Wolke" (siehe unten).
-      var isRaining = rainSignal && cc >= 50 && sunRatio <= 0.25;
+      // Sanity-Check gegen die eigene Erzeugung (nur aussagekraeftig, wenn NICHT nearDuskOrDawn - siehe
+      // oben): ein Regen-Signal vom Modell allein reicht nicht fuer das Regen-Icon, das Modell bezieht
+      // sich auf ein grobes Gitterfeld. Am Morgen/Abend, wo die Erzeugung dafuer kein verlaessliches
+      // Gegenargument ist, verlangen wir statt der Erzeugung eine tatsaechlich gemessene, nicht nur vom
+      // Wettercode vermutete Niederschlagsmenge sowie eine sehr hohe Bewoelkung.
+      var isRaining = nearDuskOrDawn
+        ? (precip > 0.1 && cc >= 70)
+        : (rainSignal && cc >= 50 && sunRatio <= 0.25);
+      // Auch die Schwelle fuer "durchgehend bewoelkt, keine Sonne sichtbar" braucht nahe Sonnenauf-/
+      // -untergang eine viel eindeutigere Bewoelkung, weil sunRatio dort nicht zwischen "wirklich
+      // bewoelkt" und "einfach fruehe/spaete Tageszeit" unterscheiden kann.
+      var looksFullyOvercast = nearDuskOrDawn ? (cc >= 90) : (cc >= 70 && sunRatio <= 0.12);
 
       if (cc === null) {
         // Keine Wetterdaten (noch) verfuegbar -> alte, rein leistungsbasierte Sonne.
@@ -1043,7 +1065,7 @@
       } else if (isRaining) {
         drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
         drawRaindrops(SKY_CX, SKY_CY, 1.15);
-      } else if (cc >= 70 && sunRatio <= 0.12) {
+      } else if (looksFullyOvercast) {
         drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
       } else if (cc >= 70 || cc >= 30) {
         // Bei cc >= 70 landen wir nur dann hier, wenn trotz der laut Open-Meteo hohen Bewoelkung
