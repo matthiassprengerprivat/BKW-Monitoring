@@ -482,20 +482,43 @@
   var histByDevice = {}; // Geraet -> { Datum -> kWh }, aus den Meross-App-Exporten in HISTORICAL_FILES
 
   // Wetter-Kontext (Open-Meteo, kostenlos, kein Key noetig): liefert echten Sonnenauf-/-untergang
-  // (fuer eine verlaessliche Tag/Nacht-Erkennung statt nur ueber die Wattzahl zu raten) und
-  // Bewoelkung/Sonnenscheindauer als Zusatzinfo. Wird unabhaengig vom 1-Minuten-Datentakt nur alle
-  // 30 Minuten neu geholt (Wetter aendert sich nicht minuetlich, und Open-Meteo muss nicht unnoetig
-  // oft angefragt werden). Schlaegt die Abfrage fehl (z.B. kein Internet, Open-Meteo down), bleibt
-  // weatherData einfach null/veraltet und der Code faellt automatisch auf die alte, rein
-  // wattzahl-basierte Tag/Nacht-Erkennung zurueck (siehe renderHouseFlow) - nie hart abhaengig davon.
+  // (fuer eine verlaessliche Tag/Nacht-Erkennung statt nur ueber die Wattzahl zu raten) sowie
+  // Bewoelkung/Niederschlag als Zusatzinfo und fuer die Wolken-/Regen-Icons. Schlaegt die Abfrage
+  // fehl (z.B. kein Internet, Open-Meteo down), bleibt weatherData einfach null/veraltet und der
+  // Code faellt automatisch auf die alte, rein wattzahl-basierte Tag/Nacht-Erkennung zurueck (siehe
+  // renderHouseFlow) - nie hart abhaengig davon.
+  //
+  // Wichtiger Hinweis zur Aktualitaet (nach Rueckfrage vom 23.8., "Regen seit 15 Min, Icon zeigt nur
+  // bedeckt"): Open-Meteo selbst schreibt, "current"-Werte basieren auf dem neuesten verfuegbaren
+  // 15-Minuten-Modell-Zeitschritt (fuer Mitteleuropa DWD ICON-D2 bzw. Meteo-France AROME) - das ist
+  // KEINE Live-Radarmessung, sondern eine Modellschaetzung fuer die Region/das Gitterfeld, die bei
+  // ploetzlichen, sehr lokalen Schauern (genau vor dem eigenen Fenster) abweichen oder etwas
+  // nachhinken kann. Zusaetzlich wurde weatherData bisher nur alle 30 Minuten neu geholt UND (im
+  // Gegensatz zu den CSV-Messwerten) NICHT beim Zurueckkommen in die App/den Tab sofort aktualisiert
+  // - wer die App laengere Zeit im Hintergrund hatte und dann genau in dem Moment reinschaut, sah
+  // moeglicherweise noch den Stand von vor dem Regen. Behoben durch: (1) kuerzeres Poll-Intervall,
+  // (2) sofortiges Nachladen beim Zurueckkommen/Fokus (wie schon bei den CSV-Messwerten), (3) auch
+  // ueber den "Jetzt aktualisieren"-Button anstossbar, (4) weather_code als zweites Signal fuer
+  // "regnet es gerade" zusaetzlich zur reinen Niederschlagsmenge (siehe isRaining unten) - deckt
+  // Faelle ab, in denen die Modell-Niederschlagsmenge nur knapp ueber/unter 0 liegt, der Wettercode
+  // selbst aber eindeutig Regen/Schauer/Gewitter meldet.
   var weatherData = null;
-  function loadWeather() {
+  var lastWeatherLoadAt = 0;
+  function loadWeather(force) {
     if (typeof WEATHER_LAT === 'undefined' || typeof WEATHER_LON === 'undefined') return;
+    var now = Date.now();
+    if (!force && now - lastWeatherLoadAt < 4 * 60 * 1000) return; // min. 4 Min. Abstand zwischen Abfragen
+    lastWeatherLoadAt = now;
     var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + WEATHER_LAT + '&longitude=' + WEATHER_LON +
-      '&current=cloud_cover,precipitation&daily=sunrise,sunset,sunshine_duration,cloud_cover_mean&timezone=auto';
+      '&current=cloud_cover,precipitation,weather_code&daily=sunrise,sunset,sunshine_duration,cloud_cover_mean&timezone=auto';
     fetch(url).then(function (resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
       .then(function (data) { weatherData = data; if (typeof lastRows !== 'undefined' && lastRows.length) render(lastRows); })
       .catch(function (err) { console.warn('Wetterdaten konnten nicht geladen werden (nicht kritisch):', err); });
+  }
+  // WMO-Wettercodes 51-67 (Nieseln/Regen), 80-82 (Regenschauer), 95-99 (Gewitter, meist mit Regen) -
+  // siehe Open-Meteo/WMO-Code-Tabelle. Dient als zweites Signal neben der Niederschlagsmenge.
+  function weatherCodeMeansRain(code) {
+    return (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99);
   }
 
   function dayOfYear(d) {
@@ -999,11 +1022,16 @@
       var sunRatio = maxEverPower > 0 ? Math.max(0, Math.min(1, totalNowVal / maxEverPower)) : 0;
       var cc = (weatherData && weatherData.current && typeof weatherData.current.cloud_cover === 'number') ? weatherData.current.cloud_cover : null;
       var precip = (weatherData && weatherData.current && typeof weatherData.current.precipitation === 'number') ? weatherData.current.precipitation : 0;
+      // Zweites Signal neben der reinen Niederschlagsmenge: der von Open-Meteo diagnostizierte
+      // Wettercode. Hilft, wenn die Modell-Niederschlagsmenge fuer das Gitterfeld nur knapp bei/über
+      // 0 liegt, der Wettercode selbst aber eindeutig Regen/Schauer/Gewitter anzeigt (siehe Kommentar
+      // bei loadWeather oben).
+      var isRaining = precip > 0 || (weatherData && weatherData.current && weatherCodeMeansRain(weatherData.current.weather_code));
 
       if (cc === null) {
         // Keine Wetterdaten (noch) verfuegbar -> alte, rein leistungsbasierte Sonne.
         drawSun(SKY_CX, SKY_CY, sunRatio);
-      } else if (precip > 0) {
+      } else if (isRaining) {
         drawCloud(SKY_CX, SKY_CY, 1.15, 0.95);
         drawRaindrops(SKY_CX, SKY_CY, 1.15);
       } else if (cc >= 70 && sunRatio <= 0.12) {
@@ -1655,12 +1683,35 @@
     load();
   }
 
-  document.getElementById('refreshBtn').addEventListener('click', requestLoad);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) requestLoad();
+  // Das gleiche Problem betrifft die Wetterdaten genauso - bisher wurden die aber NUR alle 30 Minuten
+  // per festem Takt neu geladen und nie beim Zurueckkommen/Fokussieren, obwohl genau das der Moment
+  // ist, in dem ein veralteter Wetterstand am meisten stoert (z.B. Wolke/Sonne im Bild passt nicht
+  // mehr zur echten Situation). Deshalb hier zusaetzlich bei jedem der u.g. Ereignisse auch die
+  // Wetterdaten neu laden - loadWeather() hat seinen eigenen Mindestabstand (4 Min.), es wird also
+  // trotz mehrfacher Ereignisse nicht zu haeufig abgefragt. Der Button "Jetzt aktualisieren" erzwingt
+  // dagegen immer ein sofortiges Update (force=true), auch wenn die letzte Abfrage erst kurz her ist.
+  function requestWeatherRefresh() {
+    loadWeather();
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', function () {
+    requestLoad();
+    loadWeather(true);
   });
-  window.addEventListener('focus', requestLoad);
-  window.addEventListener('pageshow', requestLoad);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) {
+      requestLoad();
+      requestWeatherRefresh();
+    }
+  });
+  window.addEventListener('focus', function () {
+    requestLoad();
+    requestWeatherRefresh();
+  });
+  window.addEventListener('pageshow', function () {
+    requestLoad();
+    requestWeatherRefresh();
+  });
 
   // Der obige visibilitychange/focus-Fix reicht allein nicht immer aus: Browser koennen den
   // normalen "setInterval" eines Tabs verlangsamen oder ganz anhalten, SOBALD der Tab laengere Zeit
@@ -1685,10 +1736,13 @@
   requestLoad();
   setInterval(requestLoad, usingWorkerTick ? REFRESH_MS * 5 : REFRESH_MS);
 
-  // Wetter-Kontext (siehe loadWeather oben): einmal beim Start, danach nur alle 30 Minuten -
-  // deutlich seltener als der 1-Minuten-Datentakt, da Wetter sich nicht minuetlich aendert.
+  // Wetter-Kontext (siehe loadWeather oben): einmal beim Start, danach standardmaessig alle 10
+  // Minuten - deutlich seltener als der 1-Minuten-Datentakt, da sich Bewoelkung/Regen nicht
+  // minuetlich aendert, aber haeufig genug, um bei einem durchgehend offenen Tab/Display (ohne
+  // zwischenzeitliches visibilitychange/focus) nicht zu veraltet zu wirken. Das obige
+  // Zurueckkommen/Fokussieren-Update ist trotzdem der Hauptmechanismus fuer Aktualitaet.
   loadWeather();
-  setInterval(loadWeather, 30 * 60 * 1000);
+  setInterval(loadWeather, 10 * 60 * 1000);
 
   // PWA: Service Worker registrieren (siehe sw.js) - macht die Seite "installierbar" (Homescreen-
   // Icon, Vollbild-Modus) und liefert bei fehlendem Empfang zumindest die letzten bekannten Werte.
