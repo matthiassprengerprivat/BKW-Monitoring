@@ -1025,8 +1025,17 @@
       // Zweites Signal neben der reinen Niederschlagsmenge: der von Open-Meteo diagnostizierte
       // Wettercode. Hilft, wenn die Modell-Niederschlagsmenge fuer das Gitterfeld nur knapp bei/über
       // 0 liegt, der Wettercode selbst aber eindeutig Regen/Schauer/Gewitter anzeigt (siehe Kommentar
-      // bei loadWeather oben).
-      var isRaining = precip > 0 || (weatherData && weatherData.current && weatherCodeMeansRain(weatherData.current.weather_code));
+      // bei loadWeather oben). Schwelle 0.1mm statt >0, damit reines Rauschen/Rundung im Modell nicht
+      // schon als Regen zaehlt.
+      var rainSignal = precip > 0.1 || (weatherData && weatherData.current && weatherCodeMeansRain(weatherData.current.weather_code));
+      // Wichtiger Sanity-Check (nach Rueckfrage vom 23.8., "Regenwolke trotz voller Sonne + guter
+      // Erzeugung"): ein Regen-Signal vom Modell allein reicht NICHT fuer das Regen-Icon - das Modell
+      // bezieht sich auf ein grobes Gitterfeld und kann z.B. eine leichte Regenwahrscheinlichkeit fuer
+      // die Region melden, obwohl vor dem eigenen Fenster gerade die Sonne scheint. Die eigene, gerade
+      // erzeugte Leistung ist das zuverlaessigste hyper-lokale Signal, das wir haben: nur wenn dazu
+      // auch noch die Bewoelkung hoch UND die Erzeugung im Vergleich zum bisherigen Rekord niedrig ist,
+      // zeigen wir das volle "es regnet"-Icon. Sonst bestenfalls "Sonne hinter Wolke" (siehe unten).
+      var isRaining = rainSignal && cc >= 50 && sunRatio <= 0.25;
 
       if (cc === null) {
         // Keine Wetterdaten (noch) verfuegbar -> alte, rein leistungsbasierte Sonne.
