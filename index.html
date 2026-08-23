@@ -1024,13 +1024,13 @@
       var cc = (weatherData && weatherData.current && typeof weatherData.current.cloud_cover === 'number') ? weatherData.current.cloud_cover : null;
       var precip = (weatherData && weatherData.current && typeof weatherData.current.precipitation === 'number') ? weatherData.current.precipitation : 0;
 
-      // Wichtige Einschraenkung (nach Rueckfrage vom 23.8., "wenig Wolken + Sonne noch sichtbar am
-      // Abend, Dashboard zeigt trotzdem nur dunkle Wolke ohne Sonne"): sunRatio (Erzeugung jetzt im
-      // Vergleich zum bisherigen Tagesrekord) ist NUR in der Mitte des Tages ein verlaessliches Signal
-      // dafuer, ob es wirklich bewoelkt ist. Am fruehen Morgen und spaeten Abend ist die Erzeugung
-      // wegen des flachen Sonnenstands ohnehin niedrig - unabhaengig davon, ob der Himmel klar oder
-      // bewoelkt ist. sunRatio wuerde dort also IMMER "wenig Sonne" andeuten und faelschlich die volle,
-      // sonnenlose Wolke ausloesen, selbst wenn kaum Wolken da sind. Deshalb: ein Sonnenstand-Gewicht
+      // Wichtige Einschraenkung (nach Rueckfrage vom 23./24.8.: erst "wenig Wolken + Sonne noch
+      // sichtbar am Abend zeigt dunkle Wolke", dann sogar "gar keine Wolke am Himmel morgens um 8:27,
+      // Dashboard zeigt trotzdem 100% Wolke"): sunRatio (Erzeugung jetzt im Vergleich zum bisherigen
+      // Rekord) ist NUR in einem enger gefassten Fenster um die Tagesmitte ein verlaessliches Signal
+      // dafuer, ob es wirklich bewoelkt ist - am Vormittag/Nachmittag (nicht nur direkt bei Sonnenauf-/
+      // -untergang) ist die Erzeugung wegen des noch/schon flachen Sonnenstands, Morgentau, Schatten
+      // etc. deutlich geringer als am Mittag, selbst bei komplett klarem Himmel. Ein Sonnenstand-Gewicht
       // (elevWeight, 0 = Sonnenauf-/-untergang, 1 = Sonnenmittag, angenaehert per Sinus zwischen
       // Sonnenauf- und -untergang) bestimmt, wie stark wir der Erzeugung als Gegenprobe vertrauen.
       var elevWeight = 1; // Default ohne Sonnenauf-/-untergangszeiten: wie bisher voll vertrauen.
@@ -1038,7 +1038,10 @@
         var dayFrac = (nowReal.getTime() - sunriseT.getTime()) / (sunsetT.getTime() - sunriseT.getTime());
         if (dayFrac >= 0 && dayFrac <= 1) elevWeight = Math.sin(Math.PI * dayFrac);
       }
-      var nearDuskOrDawn = elevWeight < 0.5;
+      // Nur in diesem engen Fenster um die Tagesmitte (elevWeight >= 0.75, grob die mittleren gut 2
+      // Drittel des Tages... nein: bewusst eng gefasst, siehe oben) gilt die eigene Erzeugung als robust
+      // genug, um dem Wettermodell zu widersprechen ODER es zu bestaetigen.
+      var coreDaylight = elevWeight >= 0.75;
 
       // Zweites Signal neben der reinen Niederschlagsmenge: der von Open-Meteo diagnostizierte
       // Wettercode. Hilft, wenn die Modell-Niederschlagsmenge fuer das Gitterfeld nur knapp bei/über
@@ -1046,18 +1049,20 @@
       // bei loadWeather oben). Schwelle 0.1mm statt >0, damit reines Rauschen/Rundung im Modell nicht
       // schon als Regen zaehlt.
       var rainSignal = precip > 0.1 || (weatherData && weatherData.current && weatherCodeMeansRain(weatherData.current.weather_code));
-      // Sanity-Check gegen die eigene Erzeugung (nur aussagekraeftig, wenn NICHT nearDuskOrDawn - siehe
-      // oben): ein Regen-Signal vom Modell allein reicht nicht fuer das Regen-Icon, das Modell bezieht
-      // sich auf ein grobes Gitterfeld. Am Morgen/Abend, wo die Erzeugung dafuer kein verlaessliches
-      // Gegenargument ist, verlangen wir statt der Erzeugung eine tatsaechlich gemessene, nicht nur vom
-      // Wettercode vermutete Niederschlagsmenge sowie eine sehr hohe Bewoelkung.
-      var isRaining = nearDuskOrDawn
-        ? (precip > 0.1 && cc >= 70)
-        : (rainSignal && cc >= 50 && sunRatio <= 0.25);
-      // Auch die Schwelle fuer "durchgehend bewoelkt, keine Sonne sichtbar" braucht nahe Sonnenauf-/
-      // -untergang eine viel eindeutigere Bewoelkung, weil sunRatio dort nicht zwischen "wirklich
-      // bewoelkt" und "einfach fruehe/spaete Tageszeit" unterscheiden kann.
-      var looksFullyOvercast = nearDuskOrDawn ? (cc >= 90) : (cc >= 70 && sunRatio <= 0.12);
+      // Sanity-Check gegen die eigene Erzeugung (nur aussagekraeftig innerhalb coreDaylight - s.o.):
+      // ein Regen-Signal vom Modell allein reicht nicht fuer das Regen-Icon. Ausserhalb coreDaylight,
+      // wo die Erzeugung kein verlaessliches Gegenargument ist, verlangen wir statt der Erzeugung eine
+      // tatsaechlich gemessene, nicht nur vom Wettercode vermutete Niederschlagsmenge.
+      var isRaining = coreDaylight
+        ? (rainSignal && cc >= 50 && sunRatio <= 0.25)
+        : (precip > 0.1 && cc >= 70);
+      // Die komplett sonnenlose Wolke (kein Sonnenstrahl mehr sichtbar) zeigen wir nur noch innerhalb
+      // coreDaylight, wo die niedrige Erzeugung eine wirklich verlaessliche Bestaetigung ist. Ausserhalb
+      // (Vormittag/Nachmittag/Morgen/Abend) bleibt als "bewoelktester" Zustand ohne Regen-Signal immer
+      // "Sonne hinter Wolke" (naechster Zweig unten) - das Modell kann sich hier (z.B. Nebel/duenne
+      // Hochnebel-Decke, die gerade aufloest) irren, und eine falsche komplett-dunkle Wolke waere der
+      // groessere optische Bruch mit der Realitaet als eine zu vorsichtige Sonne-hinter-Wolke.
+      var looksFullyOvercast = coreDaylight && cc >= 70 && sunRatio <= 0.12;
 
       if (cc === null) {
         // Keine Wetterdaten (noch) verfuegbar -> alte, rein leistungsbasierte Sonne.
