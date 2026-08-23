@@ -2,6 +2,16 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<script>
+// Frueh im <head> ausgefuehrt (blockierend, vor dem ersten Rendern), damit beim Laden kein
+// falsches Theme kurz aufblitzt: gespeicherte Wahl aus dem Umschalter direkt auf <html> setzen.
+(function () {
+  try {
+    var t = localStorage.getItem('bkwTheme');
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* localStorage evtl. nicht verfuegbar (z.B. privater Modus) */ }
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Balkonkraftwerke – Live-Dashboard</title>
 <!-- PWA: erlaubt "Zum Home-Bildschirm hinzufuegen" mit eigenem Icon im Vollbild-Modus. -->
@@ -12,10 +22,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="BKW Dashboard">
 <link rel="icon" href="icon-192.png">
+<!-- Typografie wie im Design-Vorschlag: Sora fuer Zahlen/Ueberschriften, Manrope fuer Fliesstext/
+     Labels. Kostenlos ueber Google Fonts geladen; faellt bei fehlendem Netz (z.B. offline als PWA)
+     einfach auf die System-Schrift zurueck, siehe font-family-Fallback-Ketten unten. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f7f7f6; }
+  body { margin: 0; font-family: 'Manrope', system-ui, -apple-system, "Segoe UI", sans-serif; background: #f7f7f6; }
   :root[data-theme="dark"] body { background: #0c0c0c; }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) body { background: #0c0c0c; }
@@ -68,7 +84,7 @@
   }
 
   .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h1 { font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 20px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
   .subtitle { font-size: 13px; color: var(--ink-2); margin: 0; }
 
   .status-banner { margin: 10px 0 16px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); font-size: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
@@ -81,6 +97,18 @@
      unnoetig Hoehe in der Kopfzeile. */
   .refresh-btn { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
   .refresh-btn:hover { color: var(--ink-1); }
+
+  .topbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+  .theme-toggle { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); border-radius: 8px; width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+  .theme-toggle:hover { color: var(--ink-1); }
+  .theme-icon { display: none; }
+  .theme-icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-icon-moon { display: none; }
+  :root[data-theme="dark"] .theme-icon-sun { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .theme-icon-moon { display: none; }
+    :root:where(:not([data-theme="light"])) .theme-icon-sun { display: block; }
+  }
 
   h2.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 20px 0 8px; font-weight: 600; }
   h2.section-title:first-of-type { margin-top: 0; }
@@ -101,11 +129,13 @@
   #saveTile .stat-label { font-size: 11px; }
   #saveTile .stat-value { font-size: 17px; margin: 1px 0; }
   #saveTile .stat-foot { margin-top: 2px; }
-  .stat-label { font-size: 11.5px; color: var(--ink-2); }
+  /* Kachel-Beschriftung wie im Design-Vorschlag: klein, GROSSGESCHRIEBEN, etwas Buchstabenabstand -
+     macht "Leistung jetzt" zu "LEISTUNG JETZT", ohne den Text im Markup selbst umzuschreiben. */
+  .stat-label { font-size: 11.5px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
   /* white-space: nowrap verhindert, dass bei groesseren Zahlen (mehr Stellen) das "W"/"kWh" auf dem
      Handy in eine zweite Zeile umbricht - der Wert soll immer als eine zusammenhaengende Einheit
      erscheinen, notfalls minimal kleiner statt umgebrochen. */
-  .stat-value { font-size: 20px; font-weight: 600; margin: 2px 0; white-space: nowrap; }
+  .stat-value { font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin: 2px 0; white-space: nowrap; }
   .stat-split { display: flex; gap: 12px; font-size: 11px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
   /* Auf schmalen (Handy-)Bildschirmen stehen "Solar Garage: ..." und "Solar Garten: ..." wegen
      flex-wrap sowieso schon in 2 Zeilen untereinander - der grosse horizontale Abstand (gap: 12px,
@@ -156,7 +186,7 @@
   .price-input-row input { width: 74px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 
   .chart-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px 8px; margin-bottom: 18px; position: relative; }
-  .chart-card h3 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+  .chart-card h3 { font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 14px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.005em; }
   .chart-card .chart-sub { font-size: 12px; color: var(--ink-2); margin: 0 0 10px; }
 
   /* "Garage vs. Garten"-Vergleich: einfache Balken statt SVG, reicht hier voellig. */
@@ -247,7 +277,13 @@
     <div>
       <h1>Balkonkraftwerke<span class="title-suffix"> – Ertragsübersicht</span></h1>
     </div>
-    <button class="refresh-btn" id="refreshBtn" type="button">Jetzt aktualisieren</button>
+    <div class="topbar-actions">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Hell-/Dunkelmodus wechseln" title="Hell-/Dunkelmodus wechseln">
+        <svg class="theme-icon theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+        <svg class="theme-icon theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+      <button class="refresh-btn" id="refreshBtn" type="button">Jetzt aktualisieren</button>
+    </div>
   </div>
 
   <div class="status-banner" id="statusBanner">
@@ -898,7 +934,10 @@
     // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz/dunkel, um sie optisch von den beiden
     // Einzelwerten abzuheben. Farbtoene an den neuen Design-Vorschlag angepasst (siehe Kacheln/Palette).
     var RED = '#a6362b', BLUE = '#275e8c', INK = '#12120f';
-    var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+    // Wie im Design-Vorschlag: Zahlen in Sora (kraeftig, geometrisch), Beschriftungen in Manrope -
+    // mit demselben System-Font-Fallback wie der Rest der Seite, falls Google Fonts mal nicht laedt.
+    var FONT_DISPLAY = "'Sora', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    var FONT_BODY = "'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
 
     // Auf Wunsch (Rueckfrage vom 24.8.) ohne Sprechblasen-Schwanz - die drei Werte-Kaesten (Garage/
     // Garten/Gesamt) sehen dadurch alle gleich aus, statt mit unterschiedlich geformten Zeigern auf
@@ -912,13 +951,13 @@
       var g = el('g', {});
       g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: '#ffffff', stroke: accent, 'stroke-width': BUBBLE_STROKE }));
       var valT = el('text', {
-        x: bx + bw / 2, y: by + bh * 0.46, 'text-anchor': 'middle', 'font-family': FONT,
+        x: bx + bw / 2, y: by + bh * 0.46, 'text-anchor': 'middle', 'font-family': FONT_DISPLAY,
         'font-weight': '700', 'font-size': valFontSize, fill: INK
       });
       valT.textContent = value;
       g.appendChild(valT);
       var lblT = el('text', {
-        x: bx + bw / 2, y: by + bh * 0.8, 'text-anchor': 'middle', 'font-family': FONT,
+        x: bx + bw / 2, y: by + bh * 0.8, 'text-anchor': 'middle', 'font-family': FONT_BODY,
         'font-weight': '400', 'font-size': lblFontSize, fill: INK
       });
       lblT.textContent = label;
@@ -938,7 +977,7 @@
       d: 'M' + (meterX + 4) + ' ' + (meterY - 10) + ' l -10 13 h 7 l -4 10 l 11 -14 h -7 z',
       fill: INK, stroke: 'none'
     }));
-    var meterLbl = el('text', { x: meterX + meterR + 12, y: meterY + 7, 'text-anchor': 'start', 'font-family': FONT, 'font-size': 26, fill: INK });
+    var meterLbl = el('text', { x: meterX + meterR + 12, y: meterY + 7, 'text-anchor': 'start', 'font-family': FONT_BODY, 'font-size': 26, fill: INK });
     meterLbl.textContent = 'Netzeinspeisung';
     svg.appendChild(meterLbl);
 
@@ -1744,6 +1783,28 @@
     requestLoad();
     loadWeather(true);
   });
+
+  // Hell-/Dunkelmodus-Umschalter: merkt sich die Wahl in localStorage (Key 'bkwTheme'), das
+  // Blocking-Script oben im <head> wendet sie beim naechsten Laden sofort an (kein Aufblitzen).
+  // Ohne gespeicherte Wahl folgt die Seite weiterhin automatisch der Systemeinstellung.
+  (function () {
+    var THEME_KEY = 'bkwTheme';
+    var root = document.documentElement;
+    var toggleBtn = document.getElementById('themeToggle');
+    if (!toggleBtn) return;
+
+    function effectiveTheme() {
+      var explicit = root.getAttribute('data-theme');
+      if (explicit === 'light' || explicit === 'dark') return explicit;
+      return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+
+    toggleBtn.addEventListener('click', function () {
+      var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* siehe oben */ }
+    });
+  })();
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
       requestLoad();
