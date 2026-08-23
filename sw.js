@@ -18,8 +18,8 @@
 // Speichern/Nachschlagen im Cache die Query-String immer abgeschnitten, sodass alle Anfragen an
 // dieselbe Basis-URL denselben Cache-Eintrag benutzen.
 
-var CACHE_NAME = 'bkw-dashboard-v1';
-var APP_SHELL = ['./', './config.js', './haus-solar.jpg', './manifest.json'];
+var CACHE_NAME = 'bkw-dashboard-v2';
+var APP_SHELL = ['./', './config.js', './haus-solar.jpg', './haus-solar-dark.jpg', './manifest.json'];
 
 function stripQuery(url) {
   var i = url.indexOf('?');
