@@ -54,8 +54,6 @@
        Gewinn-Werte und den "live"-Punkt, sonst nirgends verwendet. */
     --accent-green:      #12a150;
     --accent-green-soft: #e6f5ec;
-    /* Haus-Zeichnung bleibt im Hellmodus unveraendert (passt hier schon gut, siehe Design-Vorschlag). */
-    --house-photo-filter: none;
     color-scheme: light;
     max-width: 980px; margin: 0 auto; padding: 28px 20px 70px; color: var(--ink-1);
   }
@@ -66,9 +64,6 @@
     --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
     --total-line: #e8e8e4;
     --accent-green: #1fd16c; --accent-green-soft: rgba(31,209,108,0.16);
-    /* Im Dunkelmodus umgekehrt statt nur entsaettigt: helle Linien auf dunklem Grund, statt eines
-       hellen Fotos, das wie aufgeklebt auf der dunklen Seite wirkt (siehe Design-Vorschlag). */
-    --house-photo-filter: grayscale(1) invert(1) contrast(1.1);
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
@@ -88,7 +83,11 @@
   .subtitle { font-size: 13px; color: var(--ink-2); margin: 0; }
 
   .status-banner { margin: 10px 0 16px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); font-size: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
-  .house-photo { filter: var(--house-photo-filter); }
+  /* Kein CSS-Filter mehr fuers Invertieren im Dunkelmodus (Safari/iOS hat "filter: invert(...)" auf
+     SVG-<image> in der Praxis nicht zuverlaessig angewendet - sah auf dem echten Handy nur verwaschen
+     grau statt schwarz aus). Stattdessen zwei fertige Bilddateien (haus-solar.jpg / haus-solar-dark.jpg),
+     JS waehlt beim Rendern (renderHouseFlow) je nach Modus die passende aus - funktioniert dadurch
+     ueberall exakt gleich, unabhaengig vom Browser. */
   .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-green); flex: none; animation: pulse 1.8s infinite; }
   .live-dot.stale { background: var(--ink-3); animation: none; }
   @keyframes pulse { 0%,100% { opacity: .9; } 50% { opacity: .25; } }
@@ -126,7 +125,8 @@
      Handy mehr vom Hausbild ohne Scrollen sichtbar bleibt. Nur diese eine Kachel betroffen, "Leistung
      jetzt" und "Ertrag heute" bleiben in der normalen Groesse. */
   #saveTile { min-height: 56px; padding: 8px 11px; }
-  #saveTile .stat-label { font-size: 11px; }
+  /* Beschriftung bewusst NICHT verkleinert (frueher 11px vs. 11.5px ueberall sonst - kaum
+     wahrnehmbarer, aber unschoener Groessenunterschied zwischen den drei Kachel-Ueberschriften). */
   #saveTile .stat-value { font-size: 17px; margin: 1px 0; }
   #saveTile .stat-foot { margin-top: 2px; }
   /* Kachel-Beschriftung wie im Design-Vorschlag: klein, GROSSGESCHRIEBEN, etwas Buchstabenabstand -
@@ -357,6 +357,16 @@
 (function () {
   var ns = 'http://www.w3.org/2000/svg';
   function el(tag, attrs) { var e = document.createElementNS(ns, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+  // Einzige Quelle der Wahrheit fuer "sind wir aktuell hell oder dunkel" - von allem benutzt, was
+  // dafuer eine JS-Entscheidung braucht (z.B. welches Hausbild-Asset geladen wird), nicht nur CSS.
+  // Gleiche Logik wie im Hell-/Dunkel-Schalter weiter unten, nur hier zentral, damit sie ueberall
+  // (Rendering + Umschalter) exakt dasselbe Ergebnis liefert.
+  function currentTheme() {
+    var explicit = document.documentElement.getAttribute('data-theme');
+    if (explicit === 'light' || explicit === 'dark') return explicit;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
 
   var REFRESH_MS = 1 * 60 * 1000;
 
@@ -906,7 +916,12 @@
 
     // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
-    svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet', class: 'house-photo' }));
+    // Im Dunkelmodus eine fertig invertierte zweite Bilddatei statt eines Live-CSS-Filters (siehe
+    // Kommentar bei .live-dot oben) - echtes Schwarz statt des verwaschenen Grau, das der Filter auf
+    // manchen Handy-Browsern erzeugt hat.
+    var theme = currentTheme();
+    var housePhotoSrc = theme === 'dark' ? 'haus-solar-dark.jpg' : 'haus-solar.jpg';
+    svg.appendChild(el('image', { href: housePhotoSrc, x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet', class: 'house-photo' }));
 
     // Tag/Nacht wird jetzt VOR den restlichen Zeichnungen bestimmt, damit wir bei Nacht direkt im
     // Anschluss an das Hintergrundbild ein abdunkelndes Overlay einfuegen koennen - alles danach
@@ -933,7 +948,16 @@
     // Die beiden Anlagen behalten ihre Farbcodierung (rot = Garage, blau = Wandmontage/Garten) -
     // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz/dunkel, um sie optisch von den beiden
     // Einzelwerten abzuheben. Farbtoene an den neuen Design-Vorschlag angepasst (siehe Kacheln/Palette).
-    var RED = '#a6362b', BLUE = '#275e8c', INK = '#12120f';
+    // Im Dunkelmodus (auf Wunsch) eine dunkel gefuellte Box statt der bisher immer weissen - dieselben
+    // helleren Rot-/Blau-Toene wie im Design-Vorschlag fuers Dunkelthema, dazu weisse, etwas fettere
+    // Schrift statt der dunklen Tinte, damit es auf dem jetzt echten Schwarz des Hausbilds lesbar bleibt.
+    var isDark = theme === 'dark';
+    var RED = isDark ? '#d9695c' : '#a6362b';
+    var BLUE = isDark ? '#5b93c4' : '#275e8c';
+    var INK = isDark ? '#f2f2f0' : '#12120f';
+    var BUBBLE_FILL = isDark ? '#171717' : '#ffffff';
+    var VALUE_WEIGHT = isDark ? '800' : '700';
+    var LABEL_WEIGHT = isDark ? '600' : '400';
     // Wie im Design-Vorschlag: Zahlen in Sora (kraeftig, geometrisch), Beschriftungen in Manrope -
     // mit demselben System-Font-Fallback wie der Rest der Seite, falls Google Fonts mal nicht laedt.
     var FONT_DISPLAY = "'Sora', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -949,16 +973,16 @@
       valFontSize = valFontSize || 56;
       lblFontSize = lblFontSize || 38;
       var g = el('g', {});
-      g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: '#ffffff', stroke: accent, 'stroke-width': BUBBLE_STROKE }));
+      g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: BUBBLE_FILL, stroke: accent, 'stroke-width': BUBBLE_STROKE }));
       var valT = el('text', {
         x: bx + bw / 2, y: by + bh * 0.46, 'text-anchor': 'middle', 'font-family': FONT_DISPLAY,
-        'font-weight': '700', 'font-size': valFontSize, fill: INK
+        'font-weight': VALUE_WEIGHT, 'font-size': valFontSize, fill: INK
       });
       valT.textContent = value;
       g.appendChild(valT);
       var lblT = el('text', {
         x: bx + bw / 2, y: by + bh * 0.8, 'text-anchor': 'middle', 'font-family': FONT_BODY,
-        'font-weight': '400', 'font-size': lblFontSize, fill: INK
+        'font-weight': LABEL_WEIGHT, 'font-size': lblFontSize, fill: INK
       });
       lblT.textContent = label;
       g.appendChild(lblT);
@@ -972,7 +996,7 @@
     // Zähler / Netzeinspeisung - weiter links, näher an der Hauswand zwischen Garage und Wandmodul,
     // damit sowohl die roten (Garage) als auch der blaue (Wandmodul) Einspeisepfeil gut sichtbar bleiben.
     var meterX = 530, meterY = 1080, meterR = 20;
-    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: meterR, fill: '#ffffff', stroke: INK, 'stroke-width': 5 }));
+    svg.appendChild(el('circle', { cx: meterX, cy: meterY, r: meterR, fill: BUBBLE_FILL, stroke: INK, 'stroke-width': 5 }));
     svg.appendChild(el('path', {
       d: 'M' + (meterX + 4) + ' ' + (meterY - 10) + ' l -10 13 h 7 l -4 10 l 11 -14 h -7 z',
       fill: INK, stroke: 'none'
@@ -1787,23 +1811,34 @@
   // Hell-/Dunkelmodus-Umschalter: merkt sich die Wahl in localStorage (Key 'bkwTheme'), das
   // Blocking-Script oben im <head> wendet sie beim naechsten Laden sofort an (kein Aufblitzen).
   // Ohne gespeicherte Wahl folgt die Seite weiterhin automatisch der Systemeinstellung.
+  // Nach dem Umschalten sofort neu rendern (nicht erst beim naechsten automatischen Refresh) - vor
+  // allem das Hausbild und die Sprechblasen-Farben haengen jetzt vom Modus ab (siehe renderHouseFlow),
+  // das soll man sofort sehen, nicht erst nach bis zu einer Minute.
   (function () {
     var THEME_KEY = 'bkwTheme';
     var root = document.documentElement;
     var toggleBtn = document.getElementById('themeToggle');
-    if (!toggleBtn) return;
 
-    function effectiveTheme() {
-      var explicit = root.getAttribute('data-theme');
-      if (explicit === 'light' || explicit === 'dark') return explicit;
-      return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    function rerenderIfPossible() {
+      if (typeof lastRows !== 'undefined' && lastRows.length) render(lastRows);
     }
 
-    toggleBtn.addEventListener('click', function () {
-      var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* siehe oben */ }
-    });
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        var next = currentTheme() === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* siehe oben */ }
+        rerenderIfPossible();
+      });
+    }
+
+    // Ohne eigene Wahl (kein 'data-theme' gesetzt) folgt die Seite der Systemeinstellung - wechselt
+    // das Handy z.B. abends automatisch in den Dunkelmodus, soll das Hausbild direkt mitwechseln.
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+        if (!root.getAttribute('data-theme')) rerenderIfPossible();
+      });
+    }
   })();
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
