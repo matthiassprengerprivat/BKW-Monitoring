@@ -16,9 +16,9 @@
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f7f7f6; }
-  body:has([data-theme="dark"]) { background: #0c0c0c; }
+  :root[data-theme="dark"] body { background: #0c0c0c; }
   @media (prefers-color-scheme: dark) {
-    body:not(:has([data-theme="light"])) { background: #0c0c0c; }
+    :root:where(:not([data-theme="light"])) body { background: #0c0c0c; }
   }
 
   .viz-root {
@@ -34,6 +34,12 @@
     --wash-1:     rgba(17,17,17,0.06);
     --wash-2:     rgba(138,138,138,0.14);
     --total-line: #9a9a9a;
+    /* Einzige Signalfarbe im ganzen Dashboard (siehe Design-Vorschlag) - reserviert fuer Ersparnis/
+       Gewinn-Werte und den "live"-Punkt, sonst nirgends verwendet. */
+    --accent-green:      #12a150;
+    --accent-green-soft: #e6f5ec;
+    /* Haus-Zeichnung bleibt im Hellmodus unveraendert (passt hier schon gut, siehe Design-Vorschlag). */
+    --house-photo-filter: none;
     color-scheme: light;
     max-width: 980px; margin: 0 auto; padding: 28px 20px 70px; color: var(--ink-1);
   }
@@ -43,6 +49,10 @@
     --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
     --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
     --total-line: #e8e8e4;
+    --accent-green: #1fd16c; --accent-green-soft: rgba(31,209,108,0.16);
+    /* Im Dunkelmodus umgekehrt statt nur entsaettigt: helle Linien auf dunklem Grund, statt eines
+       hellen Fotos, das wie aufgeklebt auf der dunklen Seite wirkt (siehe Design-Vorschlag). */
+    --house-photo-filter: grayscale(1) invert(1) contrast(1.1);
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
@@ -52,6 +62,7 @@
       --gridline: #2a2a28; --baseline: #3a3a37; --border: rgba(255,255,255,0.12);
       --wash-1: rgba(242,242,240,0.08); --wash-2: rgba(154,154,154,0.14);
       --total-line: #e8e8e4;
+      --accent-green: #1fd16c; --accent-green-soft: rgba(31,209,108,0.16);
       color-scheme: dark;
     }
   }
@@ -61,7 +72,8 @@
   .subtitle { font-size: 13px; color: var(--ink-2); margin: 0; }
 
   .status-banner { margin: 10px 0 16px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2); font-size: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
-  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-1); flex: none; animation: pulse 1.8s infinite; }
+  .house-photo { filter: var(--house-photo-filter); }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-green); flex: none; animation: pulse 1.8s infinite; }
   .live-dot.stale { background: var(--ink-3); animation: none; }
   @keyframes pulse { 0%,100% { opacity: .9; } 50% { opacity: .25; } }
   .status-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,6 +137,12 @@
   }
   .stat-split span.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
   .stat-foot { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+  /* Ersparnis heute: einzige Stelle mit Farbe in den Kacheln, siehe --accent-green oben. */
+  .stat-value.stat-value-green { color: var(--accent-green); }
+  .green-pill {
+    display: inline-flex; align-items: center; gap: 4px; background: var(--accent-green-soft);
+    color: var(--accent-green); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 100px;
+  }
 
   /* Ein gemeinsames 2-Spalten-Raster fuer die 3 live generierten Kacheln (Leistung, Ertrag,
      Ersparnis) und die statische Strompreis-Box: #kpiRow bekommt "display:contents", damit seine
@@ -727,9 +745,12 @@
     // 2025 nur leicht gesunken") - jede selbst erzeugte kWh spart diese Menge an Netzstrom-CO2 ein.
     var CO2_KG_PER_KWH = 0.344;
     var co2SavedKg = todayTotal * CO2_KG_PER_KWH;
-    var co2Foot = 'entspricht ' + co2SavedKg.toFixed(1).replace('.', ',') + ' kg CO₂';
-    var priceTile = tile('Ersparnis heute', '0,00 €', '', co2Foot);
+    // Einzige Kachel mit Farbe im Dashboard (siehe --accent-green) - Ersparnis wie ein Kursgewinn
+    // dargestellt: Vorzeichen "+", gruene Zahl, gruener CO2-Chip statt neutralem Fliesstext.
+    var co2Pill = '<span class="green-pill">↑ ' + co2SavedKg.toFixed(1).replace('.', ',') + ' kg CO₂ vermieden</span>';
+    var priceTile = tile('Ersparnis heute', '+0,00 €', '', co2Pill);
     priceTile.id = 'saveTile';
+    priceTile.querySelector('.stat-value').classList.add('stat-value-green');
     kpiRow.appendChild(priceTile);
 
     window.__todayTotalKwh = todayTotal;
@@ -798,7 +819,7 @@
       var todayPrice = todayFrozen === null ? price : todayFrozen;
       var save = (window.__todayTotalKwh || 0) * todayPrice;
       var tile = document.getElementById('saveTile');
-      if (tile) tile.querySelector('.stat-value').textContent = fmtEur(save);
+      if (tile) tile.querySelector('.stat-value').textContent = '+' + fmtEur(save);
       var splits = window.__periodSplits || {};
       ['Woche', 'Monat', 'Jahr'].forEach(function (key) {
         var el2 = document.getElementById('save' + key);
@@ -849,7 +870,7 @@
 
     // Euer selbst zugeschnittenes Bild als Hintergrund (ohne eingebrannte Sprechblasen/Pfeile/Werte).
     // Sprechblasen, Pfeile und Zahlen zeichnen wir selbst on top -> voll animiert und live.
-    svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet' }));
+    svg.appendChild(el('image', { href: 'haus-solar.jpg', x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet', class: 'house-photo' }));
 
     // Tag/Nacht wird jetzt VOR den restlichen Zeichnungen bestimmt, damit wir bei Nacht direkt im
     // Anschluss an das Hintergrundbild ein abdunkelndes Overlay einfuegen koennen - alles danach
@@ -874,17 +895,22 @@
     }
 
     // Die beiden Anlagen behalten ihre Farbcodierung (rot = Garage, blau = Wandmontage/Garten) -
-    // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz, um sie optisch von den beiden
-    // Einzelwerten abzuheben.
-    var RED = '#8a1f1f', BLUE = '#1f4e79', INK = '#1a1a1a';
+    // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz/dunkel, um sie optisch von den beiden
+    // Einzelwerten abzuheben. Farbtoene an den neuen Design-Vorschlag angepasst (siehe Kacheln/Palette).
+    var RED = '#a6362b', BLUE = '#275e8c', INK = '#12120f';
     var FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
-    function speechBubble(bx, by, bw, bh, tailPoints, accent, value, label, valFontSize, lblFontSize) {
+    // Auf Wunsch (Rueckfrage vom 24.8.) ohne Sprechblasen-Schwanz - die drei Werte-Kaesten (Garage/
+    // Garten/Gesamt) sehen dadurch alle gleich aus, statt mit unterschiedlich geformten Zeigern auf
+    // ihre jeweilige Anlage. Dafuer ein deutlich dickerer Rahmen (8 statt 5), der als eigenstaendiges
+    // Gestaltungsmittel dieselbe "das gehoert zusammen"-Funktion uebernimmt wie zuvor der Schwanz.
+    var BUBBLE_STROKE = 8;
+
+    function speechBubble(bx, by, bw, bh, accent, value, label, valFontSize, lblFontSize) {
       valFontSize = valFontSize || 56;
       lblFontSize = lblFontSize || 38;
       var g = el('g', {});
-      if (tailPoints) g.appendChild(el('polygon', { points: tailPoints, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
-      g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: '#ffffff', stroke: accent, 'stroke-width': 5 }));
+      g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, rx: 26, fill: '#ffffff', stroke: accent, 'stroke-width': BUBBLE_STROKE }));
       var valT = el('text', {
         x: bx + bw / 2, y: by + bh * 0.46, 'text-anchor': 'middle', 'font-family': FONT,
         'font-weight': '700', 'font-size': valFontSize, fill: INK
@@ -924,13 +950,13 @@
     // Bogen von oben in den Zähler, damit die Linie nicht durch den "Netzeinspeisung"-Text läuft.
     svg.appendChild(flowPath('M 755 1054 C 700 1010, 610 1015, 540 1063', BLUE));
 
-    // Sprechblasen mit live Werten - Garage rot, Wandmontage/Garten blau, wie ursprünglich.
-    speechBubble(15, 970, 380, 150, '220,1120 320,1120 300,1210', RED, p0 + ' W', d0 || 'Solar Garage');
-    speechBubble(920, 910, 380, 150, '920,1000 920,1040 875,955', BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
+    // Werte-Kaesten - Garage rot, Wandmontage/Garten blau, wie ursprünglich, jetzt ohne Schwanz
+    // (siehe Kommentar bei speechBubble oben).
+    speechBubble(15, 970, 380, 150, RED, p0 + ' W', d0 || 'Solar Garage');
+    speechBubble(920, 910, 380, 150, BLUE, p1 + ' W', d1 || 'Solar Wandmontage');
 
-    // Gesamt-Wert oben im Bild, jetzt ebenfalls als Sprechblase (wie die beiden Anlagen-Werte),
-    // mit einem kleinen Schwanz hinunter zum Dachfirst.
-    speechBubble(760, 25, 520, 190, '955,215 1085,215 1020,268', INK, (p0 + p1) + ' W', 'gerade jetzt insgesamt', 58, 32);
+    // Gesamt-Wert oben im Bild, im selben Kasten-Stil wie die beiden Anlagen-Werte.
+    speechBubble(760, 25, 520, 190, INK, (p0 + p1) + ' W', 'gerade jetzt insgesamt', 58, 32);
 
     // Himmel-Icon oben rechts: rein dekorativ, aber mit mehreren Wetterzustaenden statt nur Sonne/
     // Mond. Nachts (isNight, oben bereits bestimmt) immer der Mond. Tagsueber entscheidet AUSSCHLIESSLICH
