@@ -186,11 +186,12 @@
   .price-input-row input { width: 74px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 
   .chart-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px 8px; margin-bottom: 18px; position: relative; }
-  /* Grossgeschrieben wie die Kachel-Ueberschriften oben (.stat-label) - fuer denselben einheitlichen,
-     "aufgeraeumten" Look durchgaengig auf der ganzen Seite, nicht nur bei den KPI-Kacheln. Betrifft
-     alle Karten-Titel: "Live-Leistung je Anlage", "Leistung ueber den Tag", "Wer erzeugt mehr?",
-     "Tagesertrag im Jahresueberblick" usw. - dieselbe Klasse, also automatisch ueberall konsistent. */
-  .chart-card h3 { font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 14px; font-weight: 700; margin: 0 0 2px; letter-spacing: .01em; text-transform: uppercase; }
+  /* Gleiches Rezept wie die Kachel-Ueberschriften oben (.stat-label: Manrope, 11.5px, Gewicht 700,
+     .06em Buchstabenabstand) - beim ersten Versuch liefen hier noch Sora und 14px, das wirkte im
+     Vergleich zu "LEISTUNG JETZT" & Co. deutlich groesser/massiver statt wie Teil desselben Systems.
+     Betrifft alle Karten-Titel: "Live-Leistung je Anlage", "Leistung ueber den Tag", "Wer erzeugt
+     mehr?", "Tagesertrag im Jahresueberblick" usw. - dieselbe Klasse, also automatisch ueberall gleich. */
+  .chart-card h3 { font-family: 'Manrope', system-ui, sans-serif; font-size: 11.5px; font-weight: 700; margin: 0 0 6px; letter-spacing: .06em; text-transform: uppercase; }
   .chart-card .chart-sub { font-size: 12px; color: var(--ink-2); margin: 0 0 10px; }
 
   /* "Garage vs. Garten"-Vergleich: einfache Balken statt SVG, reicht hier voellig. */
