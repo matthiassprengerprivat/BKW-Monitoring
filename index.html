@@ -202,7 +202,10 @@
   .compare-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--border); }
   .compare-bar-seg { height: 100%; }
   .compare-bar-small { height: 9px; }
-  .compare-legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); margin-top: 8px; flex-wrap: wrap; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+  /* 12.5px statt vorher 12px - gleiche Groesse wie .legend-item (dieselbe Art Legende: farbiger Punkt
+     + Geraetename), nur in einer anderen Karte verwendet. War beim Audit die einzige gefundene
+     Abweichung zwischen zwei eigentlich identischen Bauteilen. */
+  .compare-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--ink-2); margin-top: 8px; flex-wrap: wrap; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
   .compare-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
   .compare-months { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
   .compare-month-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
