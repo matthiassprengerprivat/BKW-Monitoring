@@ -229,7 +229,16 @@
   .legend-swatch.dotted { background: none; border-top: 2px dotted var(--total-line); height: 0; }
 
   svg { display: block; width: 100%; height: auto; overflow: visible; }
+  /* Weiss als Grundfarbe passt zum hellen Hausfoto - beim Skalieren auf 100% Breite kann ein
+     Sub-Pixel-Rundungsspalt am unteren/rechten Rand des Bildes entstehen, der dann diese
+     Hintergrundfarbe durchschimmern laesst. Im Hellmodus unsichtbar (weiss auf weiss), im
+     Dunkelmodus zeigte sich das als duenner heller Strich, weil hier noch dasselbe Weiss lief statt
+     des inzwischen fast schwarzen Hausbilds - deshalb unten eine eigene dunkle Variante. */
   #houseFlow { background: #ffffff; border-radius: 8px; overflow: hidden; }
+  :root[data-theme="dark"] #houseFlow { background: #000000; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) #houseFlow { background: #000000; }
+  }
   .gridline { stroke: var(--gridline); stroke-width: 1; }
   .baseline-l { stroke: var(--baseline); stroke-width: 1; }
   .axis-label { fill: var(--ink-3); font-size: 11px; }
