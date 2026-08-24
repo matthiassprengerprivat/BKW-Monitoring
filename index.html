@@ -186,18 +186,22 @@
   .price-input-row input { width: 74px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 
   .chart-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px 8px; margin-bottom: 18px; position: relative; }
-  .chart-card h3 { font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 14px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.005em; }
+  /* Grossgeschrieben wie die Kachel-Ueberschriften oben (.stat-label) - fuer denselben einheitlichen,
+     "aufgeraeumten" Look durchgaengig auf der ganzen Seite, nicht nur bei den KPI-Kacheln. Betrifft
+     alle Karten-Titel: "Live-Leistung je Anlage", "Leistung ueber den Tag", "Wer erzeugt mehr?",
+     "Tagesertrag im Jahresueberblick" usw. - dieselbe Klasse, also automatisch ueberall konsistent. */
+  .chart-card h3 { font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 14px; font-weight: 700; margin: 0 0 2px; letter-spacing: .01em; text-transform: uppercase; }
   .chart-card .chart-sub { font-size: 12px; color: var(--ink-2); margin: 0 0 10px; }
 
   /* "Garage vs. Garten"-Vergleich: einfache Balken statt SVG, reicht hier voellig. */
   .compare-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--border); }
   .compare-bar-seg { height: 100%; }
   .compare-bar-small { height: 9px; }
-  .compare-legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); margin-top: 8px; flex-wrap: wrap; }
+  .compare-legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); margin-top: 8px; flex-wrap: wrap; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
   .compare-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
   .compare-months { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
   .compare-month-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
-  .compare-month-label { width: 62px; flex-shrink: 0; }
+  .compare-month-label { width: 62px; flex-shrink: 0; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
   .compare-month-row .compare-bar { flex: 1; }
   .compare-month-total { width: 58px; text-align: right; flex-shrink: 0; color: var(--ink-1); font-variant-numeric: tabular-nums; }
 
@@ -211,7 +215,7 @@
   .cal-legend .cal-swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; background: var(--ink-1); }
 
   .legend { display: flex; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
-  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
   .legend-swatch { width: 16px; height: 2px; border-radius: 2px; background: var(--ink-1); }
   .legend-swatch.dashed { background: none; border-top: 2px dashed var(--ink-2); height: 0; }
   .legend-swatch.dotted { background: none; border-top: 2px dotted var(--total-line); height: 0; }
@@ -920,7 +924,8 @@
     // Kommentar bei .live-dot oben) - echtes Schwarz statt des verwaschenen Grau, das der Filter auf
     // manchen Handy-Browsern erzeugt hat.
     var theme = currentTheme();
-    var housePhotoSrc = theme === 'dark' ? 'haus-solar-dark.jpg' : 'haus-solar.jpg';
+    var isDark = theme === 'dark';
+    var housePhotoSrc = isDark ? 'haus-solar-dark.jpg' : 'haus-solar.jpg';
     svg.appendChild(el('image', { href: housePhotoSrc, x: 0, y: 0, width: 1778, height: 1802, preserveAspectRatio: 'xMidYMid meet', class: 'house-photo' }));
 
     // Tag/Nacht wird jetzt VOR den restlichen Zeichnungen bestimmt, damit wir bei Nacht direkt im
@@ -941,7 +946,12 @@
       // Notfall-Ruecfkfall ohne Wetterdaten: von der aktuellen Gesamtleistung ableiten.
       isNight = totalNowVal <= NIGHT_THRESHOLD_W;
     }
-    if (isNight) {
+    // Nur im Hellmodus abdunkeln - dort ist das Overlay der einzige visuelle Hinweis auf "Nacht"
+    // (das Originalfoto selbst kennt ja kein Tageslicht). Im Dunkelmodus ist das Hausbild bereits
+    // durchgehend schwarz (siehe haus-solar-dark.jpg oben) - das Overlay wuerde es nur bei Nacht
+    // zusaetzlich blau eintoenen und tagsueber wieder verschwinden, also je nach Uhrzeit unterschiedlich
+    // aussehen. Stattdessen bleibt es im Dunkelmodus immer gleich schwarz, egal ob Tag oder Nacht.
+    if (isNight && !isDark) {
       svg.appendChild(el('rect', { x: 0, y: 0, width: 1778, height: 1802, fill: '#0b1230', opacity: 0.42 }));
     }
 
@@ -949,15 +959,16 @@
     // nur die neue Gesamt-Sprechblase oben ist bewusst schwarz/dunkel, um sie optisch von den beiden
     // Einzelwerten abzuheben. Farbtoene an den neuen Design-Vorschlag angepasst (siehe Kacheln/Palette).
     // Im Dunkelmodus (auf Wunsch) eine dunkel gefuellte Box statt der bisher immer weissen - dieselben
-    // helleren Rot-/Blau-Toene wie im Design-Vorschlag fuers Dunkelthema, dazu weisse, etwas fettere
-    // Schrift statt der dunklen Tinte, damit es auf dem jetzt echten Schwarz des Hausbilds lesbar bleibt.
-    var isDark = theme === 'dark';
+    // helleren Rot-/Blau-Toene wie im Design-Vorschlag fuers Dunkelthema, dazu weisse statt dunkler
+    // Tinte, damit es auf dem jetzt echten Schwarz des Hausbilds lesbar bleibt. Schriftgewicht bewusst
+    // NICHT staerker als im Hellmodus (erster Versuch mit 800/600 wirkte zu kraeftig und liess den
+    // Text im Kasten "gequetscht" aussehen) - nur die Farbe wechselt, die Staerke bleibt gleich.
     var RED = isDark ? '#d9695c' : '#a6362b';
     var BLUE = isDark ? '#5b93c4' : '#275e8c';
     var INK = isDark ? '#f2f2f0' : '#12120f';
     var BUBBLE_FILL = isDark ? '#171717' : '#ffffff';
-    var VALUE_WEIGHT = isDark ? '800' : '700';
-    var LABEL_WEIGHT = isDark ? '600' : '400';
+    var VALUE_WEIGHT = '700';
+    var LABEL_WEIGHT = '400';
     // Wie im Design-Vorschlag: Zahlen in Sora (kraeftig, geometrisch), Beschriftungen in Manrope -
     // mit demselben System-Font-Fallback wie der Rest der Seite, falls Google Fonts mal nicht laedt.
     var FONT_DISPLAY = "'Sora', 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif";
