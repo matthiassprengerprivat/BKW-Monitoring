@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passwort-Hash erzeugen</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f7f7f6; color: #111;
+    padding: 20px;
+  }
+  .card { max-width: 440px; width: 100%; background: #fff; border: 1px solid rgba(17,17,17,0.12); border-radius: 12px; padding: 24px; }
+  h1 { font-size: 17px; margin: 0 0 6px; }
+  p { font-size: 13.5px; color: #5c5c5a; line-height: 1.5; margin: 0 0 18px; }
+  label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: #5c5c5a; }
+  input[type="password"], input[type="text"] {
+    width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid rgba(17,17,17,0.18);
+    border-radius: 8px; box-sizing: border-box; margin-bottom: 12px;
+  }
+  button { border: none; background: #12a150; color: #fff; font-size: 14px; font-weight: 600; padding: 10px 16px; border-radius: 8px; cursor: pointer; width: 100%; }
+  button:hover { background: #0f8a44; }
+  .toggle { font-size: 12.5px; color: #5c5c5a; margin: -6px 0 14px; display: block; }
+  .result { margin-top: 18px; }
+  .result-label { font-size: 12.5px; font-weight: 600; color: #5c5c5a; margin-bottom: 6px; display: block; }
+  .hash-box {
+    font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; word-break: break-all;
+    background: #f7f7f6; border: 1px solid rgba(17,17,17,0.12); border-radius: 8px; padding: 10px 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .hash-box span { flex: 1; }
+  .copy-btn { flex: none; border: 1px solid rgba(17,17,17,0.18); background: #fff; color: #111; font-size: 12px; padding: 6px 10px; border-radius: 6px; cursor: pointer; width: auto; }
+  .copied { color: #12a150; font-size: 12px; margin-top: 6px; display: none; }
+  .hint { font-size: 12px; color: #8a8a8a; margin-top: 16px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Passwort-Hash erzeugen</h1>
+  <p>
+    Tippt hier euer gewünschtes Passwort ein. Diese Seite läuft komplett offline in eurem Browser -
+    das Passwort wird nirgendwo hingeschickt, nicht einmal ins Internet. Unten erscheint dann der
+    Hash, den ihr in <code>password-config.js</code> bei <code>SITE_PASSWORD_HASH</code> einfügt.
+  </p>
+
+  <label for="pw">Neues Passwort</label>
+  <input type="password" id="pw" autocomplete="off" placeholder="Passwort eingeben…">
+  <label class="toggle"><input type="checkbox" id="showPw" style="width:auto; margin-right:6px;">Passwort anzeigen</label>
+
+  <button id="genBtn" type="button">Hash erzeugen</button>
+
+  <div class="result" id="resultArea" style="display:none;">
+    <span class="result-label">Hash (in password-config.js einfügen):</span>
+    <div class="hash-box">
+      <span id="hashOut"></span>
+      <button class="copy-btn" id="copyBtn" type="button">Kopieren</button>
+    </div>
+    <div class="copied" id="copiedMsg">Kopiert!</div>
+  </div>
+
+  <div class="hint">
+    Beispiel in der Datei: <code>var SITE_PASSWORD_HASH = "…hier der Hash…";</code>
+  </div>
+</div>
+
+<script>
+// Reine JavaScript-SHA-256-Implementierung (gemeinfrei/public domain), damit das hier auch offline
+// als lokal geoeffnete Datei garantiert funktioniert, unabhaengig von Browser-Sicherheitsregeln fuer
+// die eingebaute Web-Crypto-API bei file://-Seiten. Dieselbe Funktion steckt auch im Passwort-Riegel
+// im Dashboard selbst, damit beide Seiten exakt denselben Hash fuer dasselbe Passwort berechnen.
+function sha256(ascii) {
+  function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+  var mathPow = Math.pow;
+  var maxWord = mathPow(2, 32);
+  var lengthProperty = 'length';
+  var i, j;
+  var result = '';
+  var words = [];
+  var asciiBitLength = ascii[lengthProperty] * 8;
+  var hash = sha256.h = sha256.h || [];
+  var k = sha256.k = sha256.k || [];
+  var primeCounter = k[lengthProperty];
+  var isComposite = {};
+  for (var candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (i = 0; i < 313; i += candidate) { isComposite[i] = candidate; }
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+  ascii += '\x80';
+  while (ascii[lengthProperty] % 64 - 56) ascii += '\x00';
+  for (i = 0; i < ascii[lengthProperty]; i++) {
+    j = ascii.charCodeAt(i);
+    if (j >> 8) return;
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words[lengthProperty]] = (asciiBitLength / maxWord) | 0;
+  words[words[lengthProperty]] = asciiBitLength;
+  for (j = 0; j < words[lengthProperty];) {
+    var w = words.slice(j, j += 16);
+    var oldHash = hash;
+    hash = hash.slice(0, 8);
+    for (i = 0; i < 64; i++) {
+      var w15 = w[i - 15], w2 = w[i - 2];
+      var a = hash[0], e = hash[4];
+      var temp1 = hash[7]
+        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+          w[i - 16]
+          + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+          + w[i - 7]
+          + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+        ) | 0);
+      var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (i = 0; i < 8; i++) { hash[i] = (hash[i] + oldHash[i]) | 0; }
+  }
+  for (i = 0; i < 8; i++) {
+    for (j = 3; j + 1; j--) {
+      var b = (hash[i] >> (j * 8)) & 255;
+      result += ((b < 16) ? 0 : '') + b.toString(16);
+    }
+  }
+  return result;
+}
+function utf8Bytes(str) { return unescape(encodeURIComponent(str)); }
+
+var pwField = document.getElementById('pw');
+var showPw = document.getElementById('showPw');
+var genBtn = document.getElementById('genBtn');
+var resultArea = document.getElementById('resultArea');
+var hashOut = document.getElementById('hashOut');
+var copyBtn = document.getElementById('copyBtn');
+var copiedMsg = document.getElementById('copiedMsg');
+
+showPw.addEventListener('change', function () {
+  pwField.type = showPw.checked ? 'text' : 'password';
+});
+
+genBtn.addEventListener('click', function () {
+  var pw = pwField.value;
+  if (!pw) { pwField.focus(); return; }
+  var hash = sha256(utf8Bytes(pw));
+  hashOut.textContent = hash;
+  resultArea.style.display = 'block';
+  copiedMsg.style.display = 'none';
+});
+
+pwField.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') genBtn.click();
+});
+
+copyBtn.addEventListener('click', function () {
+  var text = hashOut.textContent;
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopied, showCopied);
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* egal, Text steht ja sichtbar da */ }
+    document.body.removeChild(ta);
+    showCopied();
+  }
+});
+function showCopied() { copiedMsg.style.display = 'block'; }
+</script>
+</body>
+</html>
