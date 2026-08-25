@@ -12,11 +12,28 @@
   } catch (e) { /* localStorage evtl. nicht verfuegbar (z.B. privater Modus) */ }
 })();
 </script>
+<script>
+// Genauso frueh und blockierend wie das Theme oben: wenn dieses Geraet das Passwort noch nie
+// erfolgreich eingegeben hat, sofort (schon bevor irgendetwas gezeichnet wird) den "gesperrt"-
+// Zustand auf <html> setzen. Das verhindert ein kurzes Aufblitzen des Dashboards, bevor die
+// Passwort-Abfrage sichtbar wird - siehe CSS/JS fuer #authGate weiter unten.
+(function () {
+  try {
+    if (localStorage.getItem('bkwUnlocked') !== '1') {
+      document.documentElement.setAttribute('data-locked', '1');
+    }
+  } catch (e) {
+    // localStorage nicht verfuegbar (z.B. sehr strikter privater Modus) - dann lieber gesperrt
+    // anzeigen als das Dashboard versehentlich offen zu lassen.
+    document.documentElement.setAttribute('data-locked', '1');
+  }
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Balkonkraftwerke – Live-Dashboard</title>
 <!-- PWA: erlaubt "Zum Home-Bildschirm hinzufuegen" mit eigenem Icon im Vollbild-Modus. -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1a1a1a">
+<meta name="theme-color" content="#ffffff">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -35,6 +52,65 @@
   :root[data-theme="dark"] body { background: #0c0c0c; }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) body { background: #0c0c0c; }
+  }
+
+  /* Passwort-Riegel: solange <html data-locked="1"> gesetzt ist (siehe Blocking-Script im <head>),
+     wird nur diese Abfrage gezeigt und der Rest der Seite komplett versteckt - nicht nur optisch
+     ueberdeckt, sondern per "display: none" wirklich aus dem Layout genommen. Eigene, von .viz-root
+     unabhaengige Theme-Variablen, damit das auch faerbt, bevor irgendetwas anderes auf der Seite
+     geladen/berechnet ist. */
+  #authGate {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    align-items: center; justify-content: center;
+    background: #f7f7f6;
+    padding: 20px;
+  }
+  :root[data-locked="1"] #authGate { display: flex; }
+  :root[data-locked="1"] #vizRoot { display: none; }
+  :root[data-theme="dark"] #authGate { background: #0c0c0c; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) #authGate { background: #0c0c0c; }
+  }
+  .auth-card {
+    max-width: 320px; width: 100%; background: #ffffff; border: 1px solid rgba(17,17,17,0.12);
+    border-radius: 14px; padding: 26px 22px; box-sizing: border-box;
+  }
+  :root[data-theme="dark"] .auth-card { background: #171717; border-color: rgba(255,255,255,0.12); }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .auth-card { background: #171717; border-color: rgba(255,255,255,0.12); }
+  }
+  .auth-card h2 {
+    font-family: 'Sora', 'Manrope', system-ui, sans-serif; font-size: 16px; font-weight: 700;
+    margin: 0 0 6px; color: #111111; letter-spacing: -0.01em;
+  }
+  :root[data-theme="dark"] .auth-card h2 { color: #f2f2f0; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .auth-card h2 { color: #f2f2f0; }
+  }
+  .auth-card p {
+    font-size: 13px; line-height: 1.5; color: #5c5c5a; margin: 0 0 16px;
+  }
+  :root[data-theme="dark"] .auth-card p { color: #9a9a9a; }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .auth-card p { color: #9a9a9a; }
+  }
+  #authInput {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 15px;
+    border: 1px solid rgba(17,17,17,0.18); border-radius: 8px; margin-bottom: 10px;
+    background: #ffffff; color: #111111;
+  }
+  :root[data-theme="dark"] #authInput { background: #0c0c0c; color: #f2f2f0; border-color: rgba(255,255,255,0.18); }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) #authInput { background: #0c0c0c; color: #f2f2f0; border-color: rgba(255,255,255,0.18); }
+  }
+  #authSubmit {
+    width: 100%; border: none; border-radius: 8px; padding: 10px 14px; font-size: 14px;
+    font-weight: 600; cursor: pointer; background: #12a150; color: #ffffff;
+  }
+  #authSubmit:hover { background: #0f8a44; }
+  #authError {
+    font-size: 12.5px; color: #b3392c; margin: 10px 0 0; display: none;
   }
 
   .viz-root {
@@ -292,6 +368,20 @@
 </style>
 </head>
 <body>
+
+<!-- Passwort-Riegel: siehe #authGate-CSS oben und das zugehoerige Script ganz unten im <body>.
+     Rein clientseitig - schreckt jemanden ab, der zufaellig die Adresse findet, ist aber keine
+     echte Festung (siehe Erklaerung im Chat). -->
+<div id="authGate">
+  <form class="auth-card" id="authForm" autocomplete="off">
+    <h2>Balkonkraftwerke-Dashboard</h2>
+    <p>Dieses Dashboard ist mit einem Passwort geschützt. Auf diesem Gerät musst du es nur einmal eingeben.</p>
+    <input type="password" id="authInput" placeholder="Passwort" autocomplete="current-password" autofocus>
+    <button type="submit" id="authSubmit">Entsperren</button>
+    <p id="authError">Falsches Passwort. Bitte nochmal versuchen.</p>
+  </form>
+</div>
+
 <div class="viz-root" id="vizRoot">
 
   <div class="topbar">
@@ -374,6 +464,8 @@
 <!-- Euer persönlicher Google-Tabellen-Link steht in config.js, nicht hier. So bleibt er erhalten,
      auch wenn ihr diese Datei künftig komplett gegen eine neue Version austauscht. -->
 <script src="config.js"></script>
+<!-- Passwort-Hash steht in password-config.js, nicht hier - siehe Erklaerung dort. -->
+<script src="password-config.js"></script>
 <script>
 (function () {
   var ns = 'http://www.w3.org/2000/svg';
@@ -590,6 +682,7 @@
   var weatherData = null;
   var lastWeatherLoadAt = 0;
   function loadWeather(force) {
+    if (!appStarted) return; // Passwort-Riegel: vor der Entsperrung wird noch gar nichts abgefragt
     if (typeof WEATHER_LAT === 'undefined' || typeof WEATHER_LON === 'undefined') return;
     var now = Date.now();
     if (!force && now - lastWeatherLoadAt < 4 * 60 * 1000) return; // min. 4 Min. Abstand zwischen Abfragen
@@ -1785,6 +1878,7 @@
   }
 
   function load() {
+    if (!appStarted) return; // Passwort-Riegel: vor der Entsperrung wird noch gar nichts abgefragt
     document.getElementById('statusText').textContent = 'Lade Daten…';
     Promise.all([
       fetch(CSV_URL + (CSV_URL.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + Date.now())
@@ -1814,6 +1908,9 @@
   // focus für dasselbe "Zurückkommen" zweimal fast gleichzeitig laden.
   var lastLoadAt = 0;
   function requestLoad() {
+    if (!appStarted) return; // Passwort-Riegel: sonst wuerde ein Aufruf vor der Entsperrung (z.B.
+    // durch das "pageshow"-Ereignis beim allerersten Laden) unnoetig den Mindestabstand unten
+    // verbrauchen und den ersten echten Abruf direkt nach der Entsperrung verzoegern.
     var now = Date.now();
     if (now - lastLoadAt < 3000) return;
     lastLoadAt = now;
@@ -1892,37 +1989,151 @@
   // dort statt von einem normalen setInterval im Hauptthread. Der normale setInterval bleibt nur
   // noch als Rueckfallnetz mit deutlich laengerem Takt (falls Web Worker in einer Umgebung mal nicht
   // verfuegbar sein sollten).
-  var usingWorkerTick = false;
-  try {
-    var workerCode = 'setInterval(function () { postMessage("tick"); }, ' + REFRESH_MS + ');';
-    var workerBlob = new Blob([workerCode], { type: 'application/javascript' });
-    var tickWorker = new Worker(URL.createObjectURL(workerBlob));
-    tickWorker.onmessage = function () { requestLoad(); };
-    usingWorkerTick = true;
-  } catch (e) {
-    usingWorkerTick = false;
+  // Der eigentliche Start (erster Datenabruf + Takte) steckt jetzt in startApp() und wird erst
+  // aufgerufen, wenn das Passwort-Gate (siehe unten) das Dashboard freigegeben hat - entweder sofort
+  // beim Laden (Geraet kennt das Passwort schon aus einem frueheren Besuch) oder nach erfolgreicher
+  // Eingabe. So fragt niemand ohne Passwort auch nur einmal eure Google-Tabelle ab.
+  var appStarted = false;
+  function startApp() {
+    if (appStarted) return;
+    appStarted = true;
+
+    var usingWorkerTick = false;
+    try {
+      var workerCode = 'setInterval(function () { postMessage("tick"); }, ' + REFRESH_MS + ');';
+      var workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+      var tickWorker = new Worker(URL.createObjectURL(workerBlob));
+      tickWorker.onmessage = function () { requestLoad(); };
+      usingWorkerTick = true;
+    } catch (e) {
+      usingWorkerTick = false;
+    }
+
+    requestLoad();
+    setInterval(requestLoad, usingWorkerTick ? REFRESH_MS * 5 : REFRESH_MS);
+
+    // Wetter-Kontext (siehe loadWeather oben): einmal beim Start, danach standardmaessig alle 10
+    // Minuten - deutlich seltener als der 1-Minuten-Datentakt, da sich Bewoelkung/Regen nicht
+    // minuetlich aendert, aber haeufig genug, um bei einem durchgehend offenen Tab/Display (ohne
+    // zwischenzeitliches visibilitychange/focus) nicht zu veraltet zu wirken. Das obige
+    // Zurueckkommen/Fokussieren-Update ist trotzdem der Hauptmechanismus fuer Aktualitaet.
+    loadWeather();
+    setInterval(loadWeather, 10 * 60 * 1000);
   }
-
-  requestLoad();
-  setInterval(requestLoad, usingWorkerTick ? REFRESH_MS * 5 : REFRESH_MS);
-
-  // Wetter-Kontext (siehe loadWeather oben): einmal beim Start, danach standardmaessig alle 10
-  // Minuten - deutlich seltener als der 1-Minuten-Datentakt, da sich Bewoelkung/Regen nicht
-  // minuetlich aendert, aber haeufig genug, um bei einem durchgehend offenen Tab/Display (ohne
-  // zwischenzeitliches visibilitychange/focus) nicht zu veraltet zu wirken. Das obige
-  // Zurueckkommen/Fokussieren-Update ist trotzdem der Hauptmechanismus fuer Aktualitaet.
-  loadWeather();
-  setInterval(loadWeather, 10 * 60 * 1000);
 
   // PWA: Service Worker registrieren (siehe sw.js) - macht die Seite "installierbar" (Homescreen-
   // Icon, Vollbild-Modus) und liefert bei fehlendem Empfang zumindest die letzten bekannten Werte.
   // Rein additiv/optional: falls das aus irgendeinem Grund fehlschlaegt (z.B. sehr alter Browser),
-  // funktioniert das Dashboard ganz normal weiter, nur eben ohne diesen Zusatznutzen.
+  // funktioniert das Dashboard ganz normal weiter, nur eben ohne diesen Zusatznutzen. Das darf auch
+  // schon vor der Passwort-Eingabe passieren - der Service Worker liefert ja selbst keine Messwerte,
+  // er macht die Seite nur installierbar/offline-faehig.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').catch(function (err) {
         console.warn('Service-Worker-Registrierung fehlgeschlagen (nicht kritisch):', err);
       });
+    });
+  }
+
+  // --- Passwort-Riegel -------------------------------------------------------------------------
+  // Reine JavaScript-SHA-256-Implementierung (gemeinfrei/public domain) - dieselbe Funktion steckt
+  // auch in passwort-generator.html, damit beide Seiten fuer dasselbe Passwort exakt denselben Hash
+  // berechnen. Wichtig: das ist ein Riegel gegen "hat zufaellig die Adresse gefunden", keine echte
+  // Festung - der Seiteninhalt selbst wird weiterhin normal an den Browser geliefert, jemand mit
+  // Entwicklertools koennte die Pruefung umgehen. Fuer den Zweck hier (ein Familien-Dashboard vor
+  // Zufallsfunden schuetzen) reicht das.
+  function sha256(ascii) {
+    function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+    var mathPow = Math.pow;
+    var maxWord = mathPow(2, 32);
+    var lengthProperty = 'length';
+    var i, j;
+    var result = '';
+    var words = [];
+    var asciiBitLength = ascii[lengthProperty] * 8;
+    var hash = sha256.h = sha256.h || [];
+    var k = sha256.k = sha256.k || [];
+    var primeCounter = k[lengthProperty];
+    var isComposite = {};
+    for (var candidate = 2; primeCounter < 64; candidate++) {
+      if (!isComposite[candidate]) {
+        for (i = 0; i < 313; i += candidate) { isComposite[i] = candidate; }
+        hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+        k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+      }
+    }
+    ascii += '\x80';
+    while (ascii[lengthProperty] % 64 - 56) ascii += '\x00';
+    for (i = 0; i < ascii[lengthProperty]; i++) {
+      j = ascii.charCodeAt(i);
+      if (j >> 8) return;
+      words[i >> 2] |= j << ((3 - i) % 4) * 8;
+    }
+    words[words[lengthProperty]] = (asciiBitLength / maxWord) | 0;
+    words[words[lengthProperty]] = asciiBitLength;
+    for (j = 0; j < words[lengthProperty];) {
+      var w = words.slice(j, j += 16);
+      var oldHash = hash;
+      hash = hash.slice(0, 8);
+      for (i = 0; i < 64; i++) {
+        var w15 = w[i - 15], w2 = w[i - 2];
+        var a = hash[0], e = hash[4];
+        var temp1 = hash[7]
+          + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+          + ((e & hash[5]) ^ ((~e) & hash[6]))
+          + k[i]
+          + (w[i] = (i < 16) ? w[i] : (
+            w[i - 16]
+            + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+            + w[i - 7]
+            + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+          ) | 0);
+        var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+          + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+        hash = [(temp1 + temp2) | 0].concat(hash);
+        hash[4] = (hash[4] + temp1) | 0;
+      }
+      for (i = 0; i < 8; i++) { hash[i] = (hash[i] + oldHash[i]) | 0; }
+    }
+    for (i = 0; i < 8; i++) {
+      for (j = 3; j + 1; j--) {
+        var b = (hash[i] >> (j * 8)) & 255;
+        result += ((b < 16) ? 0 : '') + b.toString(16);
+      }
+    }
+    return result;
+  }
+  function utf8Bytes(str) { return unescape(encodeURIComponent(str)); }
+
+  var authForm = document.getElementById('authForm');
+  var authInput = document.getElementById('authInput');
+  var authError = document.getElementById('authError');
+
+  function alreadyUnlocked() {
+    try { return localStorage.getItem('bkwUnlocked') === '1'; } catch (e) { return false; }
+  }
+
+  if (alreadyUnlocked()) {
+    root.removeAttribute('data-locked');
+    startApp();
+  }
+
+  if (authForm) {
+    authForm.addEventListener('submit', function (evt) {
+      evt.preventDefault();
+      var entered = authInput.value;
+      var expected = (typeof SITE_PASSWORD_HASH !== 'undefined') ? SITE_PASSWORD_HASH : '';
+      if (entered && expected && sha256(utf8Bytes(entered)) === expected) {
+        try { localStorage.setItem('bkwUnlocked', '1'); } catch (e) { /* siehe oben */ }
+        authError.style.display = 'none';
+        root.removeAttribute('data-locked');
+        authInput.value = '';
+        startApp();
+      } else {
+        authError.style.display = 'block';
+        authInput.value = '';
+        authInput.focus();
+      }
     });
   }
 })();
