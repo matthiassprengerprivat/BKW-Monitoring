@@ -24,6 +24,11 @@ permissions:
 jobs:
   collect:
     runs-on: ubuntu-latest
+    # Hartes Backstop-Zeitlimit: collect_meross.py hat jetzt eigene Timeouts fuer jeden
+    # Netzwerk-Schritt (siehe dort), falls davon aber trotzdem mal etwas durchrutscht, soll
+    # der ganze Lauf spaetestens hier abgebrochen werden - nicht erst nach 16+ Minuten wie
+    # zuletzt beobachtet. So bleibt die Selbst-Trigger-Kette viel naeher am 1-Minuten-Takt.
+    timeout-minutes: 4
     steps:
       - name: Startzeit merken
         id: start
