@@ -127,6 +127,13 @@ def save_cached_creds(creds):
         print(f"Konnte Meross-Login nicht zwischenspeichern ({exc}) - nicht kritisch.", file=sys.stderr)
 
 
+
+# Wie lange hoechstens auf einen einzelnen Netzwerk-Schritt gewartet wird, bevor er als
+# fehlgeschlagen gilt (statt unbegrenzt haengen zu bleiben - siehe Erklaerung unten bei
+# collect_readings). In Sekunden.
+NETWORK_TIMEOUT_S = 25
+
+
 async def get_authenticated_manager():
     api_base_url = os.environ.get("MEROSS_API_BASE_URL", "https://iotx-eu.meross.com")
 
@@ -135,8 +142,8 @@ async def get_authenticated_manager():
         try:
             client = MerossHttpClient(cloud_credentials=cached)
             manager = MerossManager(http_client=client)
-            await manager.async_init()
-            await manager.async_device_discovery()
+            await asyncio.wait_for(manager.async_init(), timeout=NETWORK_TIMEOUT_S)
+            await asyncio.wait_for(manager.async_device_discovery(), timeout=NETWORK_TIMEOUT_S)
             print("Zwischengespeicherten Meross-Login wiederverwendet (kein neuer Login noetig).")
             return manager
         except Exception as exc:
@@ -146,23 +153,35 @@ async def get_authenticated_manager():
     # sendet es standardmaessig als 0 ("Nutzungsbedingungen nicht akzeptiert").
     # Das fuehrt bei aktuellen Meross-Konten zu ErrorCodes.INVALID_PARAMETER (20101).
     # Deshalb rufen wir async_login() direkt auf und setzen agree_to_terms=1 explizit.
-    creds = await MerossHttpClient.async_login(
-        api_base_url=api_base_url,
-        email=os.environ["MEROSS_EMAIL"],
-        password=os.environ["MEROSS_PASSWORD"],
-        country_code="de",
-        agree_to_terms=1,
+    creds = await asyncio.wait_for(
+        MerossHttpClient.async_login(
+            api_base_url=api_base_url,
+            email=os.environ["MEROSS_EMAIL"],
+            password=os.environ["MEROSS_PASSWORD"],
+            country_code="de",
+            agree_to_terms=1,
+        ),
+        timeout=NETWORK_TIMEOUT_S,
     )
     save_cached_creds(creds)
     client = MerossHttpClient(cloud_credentials=creds)
     manager = MerossManager(http_client=client)
-    await manager.async_init()
-    await manager.async_device_discovery()
+    await asyncio.wait_for(manager.async_init(), timeout=NETWORK_TIMEOUT_S)
+    await asyncio.wait_for(manager.async_device_discovery(), timeout=NETWORK_TIMEOUT_S)
     return manager
 
 
 async def collect_readings():
-    manager = await get_authenticated_manager()
+    # NETWORK_TIMEOUT_S rund um jeden Netzwerk-Schritt (Login, Geraete-Suche, einzelne
+    # Geraete-Abfrage): ohne das kann ein einzelner haengender Aufruf (z.B. weil Merossʼ
+    # MQTT-Broker gerade mal nicht antwortet) den kompletten Lauf viele Minuten lang
+    # blockieren, statt schnell mit einem klaren Fehler abzubrechen. Das war vermutlich die
+    # Ursache fuer den 16-Minuten-Lauf, der dann doch noch fehlgeschlagen ist: die
+    # Selbst-Trigger-Kette (siehe collect.yml, "if: always()") haette trotzdem weitergemacht,
+    # aber eben erst 16 Minuten spaeter statt nach spaetestens ein-zwei Minuten. Mit dem
+    # Timeout hier bricht ein haengender Lauf jetzt viel schneller ab, die Kette bleibt also
+    # viel naeher am normalen 1-Minuten-Takt, selbst wenn Meross mal kurz zickt.
+    manager = await asyncio.wait_for(get_authenticated_manager(), timeout=NETWORK_TIMEOUT_S * 3)
 
     plugs = manager.find_devices(device_class=ElectricityMixin)
     if not plugs:
@@ -172,11 +191,11 @@ async def collect_readings():
     rows = []
     for plug in plugs:
         try:
-            await plug.async_update()
-            metrics = await plug.async_get_instant_metrics()
+            await asyncio.wait_for(plug.async_update(), timeout=NETWORK_TIMEOUT_S)
+            metrics = await asyncio.wait_for(plug.async_get_instant_metrics(), timeout=NETWORK_TIMEOUT_S)
             rows.append([now_str, plug.name, metrics.power, metrics.voltage, metrics.current])
             print(f"{plug.name}: {metrics.power} W, {metrics.voltage} V, {metrics.current} A")
-        except Exception as exc:  # ein einzelnes fehlerhaftes Geraet soll die anderen nicht blockieren
+        except Exception as exc:  # ein einzelnes fehlerhaftes/haengendes Geraet soll die anderen nicht blockieren
             print(f"Konnte {plug.name} nicht auslesen: {exc}", file=sys.stderr)
 
     manager.close()
