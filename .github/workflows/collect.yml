@@ -76,8 +76,25 @@ jobs:
       # Repository beschraenktes Zugriffstoken (siehe Einrichtungshinweise) - der automatische
       # GITHUB_TOKEN darf sich aus Sicherheitsgruenden (Endlosschleifen-Schutz) nicht selbst erneut
       # ausloesen, ein eigenes Token schon.
+      #
+      # Auch dieser allerletzte Schritt kann selbst mal fehlschlagen - nicht wegen unseres Codes,
+      # sondern weil GitHubs eigene API kurz einen serverseitigen Fehler (HTTP 500) zurueckgibt (das
+      # ist bei GitHub gelegentlich der Fall und liegt ausserhalb unserer Kontrolle). Da NACH diesem
+      # Schritt nichts mehr kommt, das die Kette retten koennte, wird hier bis zu 5x mit kurzer Pause
+      # erneut versucht, bevor endgueltig aufgegeben wird - dann muss das 5-Minuten-Rueckfallnetz
+      # (siehe "schedule" oben) die Kette wiederbeleben.
       - name: Naechsten Lauf zuverlaessig selbst anstossen
         if: always()
         env:
           GH_TOKEN: ${{ secrets.SELF_DISPATCH_TOKEN }}
-        run: gh workflow run collect.yml --repo ${{ github.repository }}
+        run: |
+          for VERSUCH in 1 2 3 4 5; do
+            if gh workflow run collect.yml --repo ${{ github.repository }}; then
+              echo "Naechster Lauf erfolgreich angestossen (Versuch $VERSUCH)."
+              exit 0
+            fi
+            echo "Anstossen fehlgeschlagen (Versuch $VERSUCH von 5), versuche es in 5s erneut..."
+            sleep 5
+          done
+          echo "Konnte den naechsten Lauf nach 5 Versuchen nicht anstossen - das 5-Minuten-Rueckfallnetz uebernimmt."
+          exit 1
