@@ -411,7 +411,7 @@
       <div class="price-box">
         <span>Angenommener Strompreis:</span>
         <div class="price-input-row">
-          <input type="number" id="priceInput" value="0.2773" step="0.0001" min="0.10" max="1.00">
+          <input type="number" id="priceInput" value="0.2234" step="0.0001" min="0.10" max="1.00">
           <span>€/kWh</span>
         </div>
       </div>
@@ -938,7 +938,7 @@
   // eingetragen wird - und nur Tage AB der Änderung nutzen den aktuellen/live eingetragenen Preis.
   // Aktuell noch leer (noch keine Änderung bekannt) - dadurch verhält sich alles exakt wie bisher.
   var PRICE_CHANGES = [
-    // Beispiel für die Preisänderung Anfang September: { ab: '2026-09-01', vorher: 0.2773 }
+    { ab: '2026-09-01', vorher: 0.2773 }
   ];
 
   // Liefert fuer einen Tag (dayKey-String) den damals gueltigen, eingefrorenen Preis - oder null,
